@@ -35,8 +35,23 @@ type Config struct {
 	Providers map[string]provider.Config `json:"providers,omitempty"`
 	// CueNote configures the cue-note client.
 	CueNote cuenote.Config `json:"cuenote,omitempty"`
+	// Workbench configures the testing workbench.
+	Workbench WorkbenchConfig `json:"workbench,omitempty"`
 	// SystemPrompt is prepended to every prompt run unless overridden.
 	SystemPrompt string `json:"systemPrompt,omitempty"`
+}
+
+// WorkbenchConfig declares how the testing workbench finds and runs the
+// api-test-runner binary.
+type WorkbenchConfig struct {
+	// RunnerPath is the api-test-runner binary. Empty means look up
+	// "api-test-runner" on PATH at run time.
+	RunnerPath string `json:"runnerPath,omitempty"`
+	// Env lists environment variable names passed through to the runner
+	// (credentials such as X_CAT_API_KEY). Nothing else is inherited.
+	Env []string `json:"env,omitempty"`
+	// TimeoutSeconds bounds a whole runner invocation (default 10 minutes).
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
 }
 
 // Home resolves the workspace directory: the override, then $LOOMWORK_HOME, then

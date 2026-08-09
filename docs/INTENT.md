@@ -63,7 +63,7 @@ incrementally when source artifacts change. Extension point: a `runner`-style
 package consuming `model.Project` + `provider.TextGenerator` + presets, emitting
 `ArtifactTypeDoc` artifacts. Nothing about the foundation changes for it.
 
-### 6. Testing workbench (deferred)
+### 6. Testing workbench (CLI loop implemented; Lambda deferred)
 An interactive surface that drives the existing
 [`ilyaus/api-test-runner`](https://github.com/ilyaus/api-test-runner) — its CLI
 binary locally and its Lambda handler remotely — plus that repo's
@@ -72,10 +72,11 @@ binary locally and its Lambda handler remotely — plus that repo's
 2. **run** — shell out to `api-test-runner` (or invoke the Lambda) and ingest the JSON/CSV report as a `test-result` artifact.
 3. **analyze** — prompt-run over the report to classify failures (harness defect vs. genuine contract drift) into a `doc` artifact.
 4. **refine** — regenerate only harness-defective scenarios and re-run, keeping lineage via artifact parents.
-Extension points: an `internal/exec`-style process runner for the CLI, an
-`internal/ingest` mapper for report → artifact, and preset entries for the
-analysis models. Deferred entirely in this session; no code assumes its shape
-beyond the artifact types already defined.
+The mechanical step is implemented as `workbench run`: `internal/exec` runs the
+CLI binary (argv-only, environment allowlist, bounded timeout — no shell) and
+`internal/ingest` maps its stdout JSON report to a `test-result` artifact whose
+parent is the scenario artifact. The generate/analyze/refine steps are ordinary
+(optionally cue-driven) `run` invocations. The Lambda path remains deferred.
 
 ### 7. Creative playground (deferred)
 Free-form multi-modal experimentation: prompt sweeps across models/presets,
@@ -105,7 +106,8 @@ agnostic so a server can be added without touching domain or provider code.
 | CLI cue listing/inspection and cue-driven prompt runs | **Implemented** |
 | CLI vertical slice: project → artifact → prompt run → new artifact | **Implemented** |
 | Wiki generation flow | Deferred |
-| Testing workbench / `api-test-runner` + `sdd-qa` loop | Deferred |
+| Testing workbench: `workbench run` + report ingestion | **Implemented** (CLI runner only) |
+| Testing workbench Lambda path | Deferred |
 | Creative playground / sweeps / comparisons | Deferred |
 | HTTP server, auth, multi-user, remote persistence | Deferred |
 

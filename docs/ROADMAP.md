@@ -50,7 +50,7 @@ driven by a cue is indistinguishable from one driven by `--prompt` except for th
 extra metadata; unresolved variables and unreachable cue-note produce actionable
 errors.
 
-## 2. Testing workbench
+## 2. Testing workbench — *done*
 
 **Scope.** Drive [`ilyaus/api-test-runner`](https://github.com/ilyaus/api-test-runner)
 and its `.specify/extensions/sdd-qa` generate→run→analyze→refine loop as chained
@@ -69,11 +69,23 @@ directory, environment allowlist, timeout, captured stdout/stderr — no shell) 
 `internal/ingest` (map an `api-test-runner` JSON/CSV report to a `test-result`
 artifact plus a normalized summary).
 
-**Open questions to settle first.** Where the `api-test-runner` binary comes from
-(PATH, configured path, or built from a sibling checkout); whether the Lambda
-path is in scope for the first cut (suggest: no, CLI only); and whether the loop
-is one `workbench run` command or separate composable subcommands (suggest:
-separate, so each step's artifact is inspectable).
+**Resolutions.** The binary comes from `--runner`, then the `workbench.runnerPath`
+config key, then an `api-test-runner` PATH lookup — never built from a checkout.
+The Lambda path is out of scope; CLI only. The loop is composable: **generate**,
+**analyze**, and **refine** are ordinary `run` invocations (optionally cue-driven),
+while the mechanical step is a dedicated command:
+
+```text
+loomwork workbench run --project REF --scenarios ART[,ART...] --base-url URL \
+    [--runner PATH] [--auth-config PATH | --token-provider-config PATH] \
+    [--dry-run] [--arg VALUE ...] [--timeout SECONDS] [--name NAME] [--tags a,b]
+```
+
+Scenario artifacts are materialized into a temp directory, the runner executes
+with an allowlisted environment (`workbench.env`) and a bounded timeout, and its
+stdout JSON report is ingested as a `test-result` artifact whose parent is the
+first scenario artifact, with `outcome`/`total`/`passed`/`failed`/`skipped`/
+`exitCode`/`scenarios` metadata.
 
 **Done when.** A contract artifact can go through all four steps against a stub
 `api-test-runner`, with every intermediate artifact persisted and lineage intact.
@@ -90,7 +102,8 @@ Incremental regeneration keys off the source artifact id + version already
 recorded in generated metadata, so no new bookkeeping is required.
 
 **Open question.** Chunking belongs in a shared package if the workbench also
-needs it for large reports — decide when item 2 lands.
+needs it for large reports — item 2 landed without one (reports are stored
+verbatim), so chunking can start as a wiki-local concern.
 
 ## 4. Creative playground
 

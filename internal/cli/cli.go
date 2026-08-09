@@ -35,6 +35,10 @@ Commands:
                    (--prompt TEXT | --prompt-file PATH | --cue REF [--var key=value ...])
                    [--name NAME] [--type TYPE] [--tags a,b] [--pin] [--include-pinned]
                    [--temperature N] [--top-p N] [--max-tokens N] [--seed N]
+  workbench run    --project REF --scenarios ART[,ART...] --base-url URL
+                   [--runner PATH] [--auth-config PATH | --token-provider-config PATH]
+                   [--dry-run] [--arg VALUE ...] [--timeout SECONDS]
+                   [--name NAME] [--tags a,b]
   providers        list configured providers, presets, and credential status
 
 Global flags (accepted by every command):
@@ -77,6 +81,10 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		})
 	case "run":
 		return runCommand(runPrompt, rest, stdout, stderr)
+	case "workbench":
+		return runGroup(rest, stdout, stderr, map[string]commandFunc{
+			"run": workbenchRun,
+		})
 	case "providers":
 		return runCommand(providersList, rest, stdout, stderr)
 	default:

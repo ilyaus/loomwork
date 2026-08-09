@@ -68,7 +68,7 @@ duration: 2.4s     tokens: 120 prompt / 24 completion
 Every command accepts `--home PATH` (workspace override) and `--json`
 (machine-readable output). `loomwork --help` lists the full command set:
 `project create|list|show`, `artifact add|list|show|pin|unpin`, `cue list|show`,
-`run`, and `providers`.
+`run`, `workbench run`, and `providers`.
 
 ### Reusable prompts (cues)
 
@@ -87,6 +87,32 @@ rejected rather than guessed. `{{var}}` placeholders in the cue body are filled 
 generated artifact records `cue` and `cueId` metadata so a run can be traced back to
 the prompt that produced it. Point the CLI at a cue-note instance with the
 `cuenote.baseUrl` config key (default `http://localhost:8090`).
+
+### Testing workbench
+
+`workbench run` executes the sibling
+[`api-test-runner`](https://github.com/ilyaus/api-test-runner) CLI over scenario
+artifacts and ingests its JSON report as a `test-result` artifact:
+
+```bash
+loomwork workbench run --project triage --scenarios orders-scenarios \
+    --base-url http://localhost:9999 --auth-config auth.json --name orders.results
+```
+
+Scenario artifacts (Markdown, typically `spec` type — hand-written or produced by
+a prompt run) are materialized into a temporary directory and passed to the
+runner via `--scenarios`. The runner's stdout report becomes the artifact body,
+its aggregate counts (`outcome`, `total`, `passed`, `failed`, `skipped`) land in
+artifact metadata, and the artifact's parent is the first scenario artifact so
+lineage is preserved. The binary is located via `--runner`, the
+`workbench.runnerPath` config key, or an `api-test-runner` PATH lookup. The
+process runs without a shell, with only the environment variables named in
+`workbench.env`, and is killed after `--timeout` seconds
+(`workbench.timeoutSeconds`, default 10 minutes). Extra runner flags pass through
+with repeatable `--arg` (e.g. `--arg --max-parallelism --arg 2`); `--dry-run`
+validates scenarios without HTTP calls. The sdd-qa generate→run→analyze→refine
+loop composes this with ordinary `run` invocations — see
+[`docs/ROADMAP.md`](docs/ROADMAP.md) item 2.
 
 Artifact bodies come from exactly one of `--content TEXT` (inline),
 `--file PATH` (copied into the project), or `--ref PATH` (referenced in place and
@@ -177,6 +203,8 @@ internal/model        projects, artifacts, versioning, lineage (stdlib only)
 internal/provider     TextGenerator/ImageGenerator interfaces and adapters
 internal/preset       config-driven provider+model preset registry
 internal/cuenote      cue-note interface, HTTP client, in-memory stub
+internal/exec         argv-only process runner: env allowlist, timeout, no shell
+internal/ingest       api-test-runner report → test-result artifact mapping
 internal/orchestrator prompt-run pipeline: resolve → assemble → generate → persist
 internal/store        atomic JSON project persistence behind an interface
 internal/config       workspace paths, configuration loading, defaults
@@ -188,9 +216,8 @@ These are specified in `docs/INTENT.md` and have named extension points, but are
 **not** implemented here:
 
 - **Wiki generation** — chunked multi-pass runs producing linked `doc` artifacts.
-- **Testing workbench** — shell out to the `api-test-runner` CLI/Lambda, ingest its
-  JSON report as a `test-result` artifact, and drive the `.specify/extensions/sdd-qa`
-  generate→run→analyze→refine loop as chained prompt runs.
+- **Testing workbench Lambda path** — the CLI loop is implemented (`workbench run`);
+  invoking the runner's Lambda handler remotely is not.
 - **Creative playground** — preset sweeps plus image generation wired into the CLI
   through the existing `im-gen` adapter.
 - **Azure AI Foundry and Bedrock adapters** — constructors, config, and credential
