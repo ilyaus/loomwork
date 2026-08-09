@@ -1,0 +1,19 @@
+# build output
+/bin/
+/loomwork
+
+# local workspace state and real (non-example) configuration
+/.loomwork/
+config.json
+presets.json
+!config/*.example.json
+
+# credentials — never committed
+.env
+.env.*
+*.pem
+
+# tooling noise
+*.test
+*.out
+.DS_Store
