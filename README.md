@@ -119,6 +119,20 @@ Artifact bodies come from exactly one of `--content TEXT` (inline),
 read at run time). Adding an artifact under an existing name creates the next
 revision rather than overwriting.
 
+### Web UI
+
+`loomwork serve` starts an HTTP server exposing a JSON API (`/api/projects`,
+`/api/cues`, `/api/workspace`, `/api/run`) and an embedded single-page workbench
+UI over the same workspace the CLI uses:
+
+```bash
+loomwork serve --addr 127.0.0.1:8790
+```
+
+The UI covers project/artifact browsing with lineage and pinning, cue-note
+templates, provider/preset status with live reachability probing, and running
+prompts (inline or via cue) that produce new versioned artifacts.
+
 ## Workspace layout
 
 `$LOOMWORK_HOME` (default `~/.loomwork`) holds all state:
@@ -222,6 +236,5 @@ These are specified in `docs/INTENT.md` and have named extension points, but are
   through the existing `im-gen` adapter.
 - **Azure AI Foundry and Bedrock adapters** — constructors, config, and credential
   handling exist; `Generate` returns `provider.ErrNotImplemented`.
-- **HTTP surface** — a `cmd/server` sibling reusing `internal/orchestrator` unchanged.
 
 [`docs/ROADMAP.md`](docs/ROADMAP.md) sequences these with scope and acceptance criteria.

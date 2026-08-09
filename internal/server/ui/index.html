@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loomwork — Workbench</title>
+<style>
+  :root{
+    --bg:#1e2127; --panel:#23272f; --panel2:#282d36; --border:#333945;
+    --text:#d7dae0; --muted:#9099a8; --dim:#616b7d;
+    --blue:#61afef; --green:#98c379; --amber:#e5c07b; --red:#e06c75; --purple:#c678dd; --cyan:#56b6c2;
+    --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,'Segoe UI',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  .titlebar{display:flex;align-items:center;gap:12px;background:var(--panel);border-bottom:1px solid var(--border);padding:7px 14px;font-size:12.5px;flex-shrink:0}
+  .titlebar b{font-weight:600}
+  select,input,textarea{background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px}
+  textarea{font-family:var(--mono);line-height:1.5;resize:vertical}
+  .spacer{flex:1}
+  .env{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .shell{flex:1;display:flex;min-height:0}
+  .rail{width:52px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:4px;flex-shrink:0}
+  .rail button{width:38px;height:38px;border:none;background:transparent;color:var(--dim);font-size:17px;border-radius:8px;cursor:pointer;position:relative}
+  .rail button:hover{background:var(--panel2);color:var(--text)}
+  .rail button.on{background:var(--panel2);color:var(--blue);box-shadow:inset 2px 0 0 var(--blue)}
+  .rail button .tip{display:none;position:absolute;left:46px;top:8px;background:#0f1114;border:1px solid var(--border);border-radius:5px;padding:2px 9px;font-size:11px;white-space:nowrap;color:var(--text);z-index:9}
+  .rail button:hover .tip{display:block}
+  .view{flex:1;display:none;min-width:0;min-height:0;flex-direction:column}
+  .view.on{display:flex}
+  .cols{flex:1;display:grid;grid-template-columns:1fr 1fr;min-height:0}
+  .pane{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+  .pane:last-child{border-right:none}
+  .pane-h{display:flex;align-items:center;gap:8px;background:var(--panel);border-bottom:1px solid var(--border);padding:6px 12px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+  .tag{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;padding:1px 6px;border-radius:4px;font-weight:600}
+  .tg-spec{background:rgba(198,120,221,.15);color:var(--purple)}
+  .tg-test-result{background:rgba(229,192,123,.15);color:var(--amber)}
+  .tg-doc{background:rgba(152,195,121,.15);color:var(--green)}
+  .tg-log{background:rgba(144,153,168,.15);color:var(--muted)}
+  .tg-diagram{background:rgba(86,182,194,.15);color:var(--cyan)}
+  .tg-generated{background:rgba(224,108,117,.15);color:var(--red)}
+  .pane-h .v{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .pane-h .act{margin-left:auto;color:var(--blue);cursor:pointer;font-size:11.5px}
+  .code{flex:1;overflow:auto;padding:12px 14px;font:12px/1.65 var(--mono);color:var(--muted);white-space:pre-wrap}
+  .btn{font-size:11.5px;padding:4px 12px;border-radius:5px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer}
+  .btn.primary{background:#2c5d87;border-color:#3a76aa;color:#fff}
+  .btn:disabled{opacity:.45;cursor:default}
+  .btn:not(:disabled):hover{filter:brightness(1.2)}
+  .form{padding:12px 14px;display:flex;flex-direction:column;gap:9px;overflow-y:auto}
+  .frow{display:flex;gap:8px;align-items:center}
+  .frow label{width:110px;color:var(--dim);font-size:11.5px;flex-shrink:0}
+  .frow input,.frow select{flex:1}
+  .frow.checks{gap:16px;color:var(--muted);font-size:12px}
+  .term{height:170px;background:#15171c;display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--border);flex-shrink:0}
+  .term-h{font-size:11px;color:var(--dim);padding:4px 12px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .term-body{flex:1;overflow:auto;font:11.5px/1.7 var(--mono);padding:10px 14px;color:var(--muted);white-space:pre-wrap}
+  .p{color:var(--blue)} .okx{color:var(--green)} .errx{color:var(--red)} .wrn{color:var(--amber)} .dm{color:var(--dim)}
+  .statusbar{display:flex;gap:18px;align-items:center;background:var(--panel);border-top:1px solid var(--border);padding:4px 14px;font-family:var(--mono);font-size:11px;color:var(--dim);flex-shrink:0}
+  .sb-ok{color:var(--green)} .sb-warn{color:var(--amber)} .sb-err{color:var(--red)}
+  .art-cols{flex:1;display:grid;grid-template-columns:340px 1fr;min-height:0}
+  .art-list{border-right:1px solid var(--border);overflow-y:auto}
+  .alist-head{position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--border);z-index:1;display:flex;flex-direction:column;gap:8px}
+  .alist-head input{width:100%}
+  .art{padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+  .art:hover{background:var(--panel)}
+  .art.sel{background:var(--panel2);box-shadow:inset 2px 0 0 var(--blue)}
+  .art .row1{display:flex;align-items:center;gap:6px}
+  .art .name{font-weight:500;font-size:12.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .art .vv{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .pinmark{color:var(--amber);font-size:11px}
+  .art .meta{font-size:11px;color:var(--dim);margin-top:2px}
+  .art-detail{overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+  .d-head{display:flex;align-items:flex-start;gap:10px}
+  .d-head h1{font-size:16px;font-weight:600}
+  .d-head .sub{color:var(--dim);font-size:11.5px;font-family:var(--mono);margin-top:3px}
+  .lineage{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .lineage .node{border:1px solid var(--border);border-radius:6px;padding:3px 9px;background:var(--panel);cursor:pointer}
+  .lineage .node:hover{border-color:var(--blue)}
+  .lineage .node.cur{border-color:var(--blue);color:var(--text)}
+  .lineage .arr{color:var(--dim)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px}
+  .card h3{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);padding:9px 14px;border-bottom:1px solid var(--border)}
+  .card .body{padding:12px 14px;font:12px/1.65 var(--mono);color:var(--muted);white-space:pre-wrap;max-height:320px;overflow:auto}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:4px 10px;padding:12px 14px;font-size:12px}
+  .kv .k{color:var(--dim)} .kv .val{font-family:var(--mono);font-size:11.5px;word-break:break-all}
+  .cue-cols{flex:1;display:grid;grid-template-columns:320px 1fr;min-height:0}
+  .cue-list{border-right:1px solid var(--border);overflow-y:auto}
+  .cue{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+  .cue:hover{background:var(--panel)} .cue.sel{background:var(--panel2);box-shadow:inset 2px 0 0 var(--purple)}
+  .cue .nm{font-family:var(--mono);font-size:12px;color:var(--text)}
+  .cue .ds{font-size:11px;color:var(--dim);margin-top:2px}
+  .cue-detail{overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+  .prov-wrap{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px;max-width:900px}
+  .prov{display:flex;align-items:center;gap:12px;padding:12px 16px}
+  .prov .st{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  .st.up{background:var(--green)} .st.idle{background:var(--amber)} .st.off{background:var(--dim)}
+  .prov .nm{font-weight:600;width:120px}
+  .prov .detail2{color:var(--dim);font-family:var(--mono);font-size:11.5px;flex:1;word-break:break-all}
+  .empty{padding:24px;color:var(--dim);font-size:12px}
+  #toast{position:fixed;bottom:46px;right:18px;background:#0f1114;border:1px solid var(--border);border-left:3px solid var(--green);border-radius:6px;padding:9px 14px;font-size:12px;display:none;z-index:20;max-width:440px}
+  #toast.err{border-left-color:var(--red)}
+  dialog{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:18px;min-width:420px}
+  dialog::backdrop{background:rgba(0,0,0,.55)}
+  dialog h2{font-size:14px;margin-bottom:12px}
+  dialog .frow{margin-bottom:9px}
+  dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="titlebar">
+  <b>loomwork</b>
+  <select id="projSelect" class="proj"></select>
+  <button class="btn" onclick="dlgProject.showModal()">+ project</button>
+  <span class="spacer"></span>
+  <span class="env" id="envInfo"></span>
+</div>
+
+<div class="shell">
+  <div class="rail">
+    <button data-view="workbench" class="on">&#9878;<span class="tip">Workbench</span></button>
+    <button data-view="artifacts">&#9636;<span class="tip">Artifacts</span></button>
+    <button data-view="cues">&#9776;<span class="tip">Cues (cue-note)</span></button>
+    <button data-view="providers">&#9881;<span class="tip">Providers &amp; presets</span></button>
+  </div>
+
+  <!-- WORKBENCH -->
+  <div class="view on" id="view-workbench">
+    <div class="cols">
+      <div class="pane">
+        <div class="pane-h" id="wbTargetHead"><span class="dm">no target artifact selected</span></div>
+        <div class="code" id="wbTargetContent">Select a project, then pick a target artifact on the right to see its content here.</div>
+      </div>
+      <div class="pane">
+        <div class="pane-h">run prompt <span class="v">POST /api/run</span></div>
+        <div class="form">
+          <div class="frow"><label>target artifact</label><select id="runArtifact"></select></div>
+          <div class="frow"><label>model selector</label><input id="runSelector" placeholder="provider/model[#preset] — e.g. ollama/qwen3:8b#code-review"></div>
+          <div class="frow"><label>prompt source</label>
+            <select id="runSource"><option value="prompt">inline prompt</option><option value="cue">cue (cue-note)</option></select>
+          </div>
+          <div class="frow" id="rowPrompt" style="align-items:flex-start"><label>prompt</label><textarea id="runPrompt" rows="5" style="flex:1" placeholder="Ask something about the target artifact…"></textarea></div>
+          <div class="frow" id="rowCue" style="display:none"><label>cue</label><select id="runCue"></select></div>
+          <div id="cueVars"></div>
+          <div class="frow"><label>output name</label><input id="runName" placeholder="(default: <artifact>-generated)"></div>
+          <div class="frow"><label>output type</label><select id="runType"></select></div>
+          <div class="frow"><label>tags</label><input id="runTags" placeholder="comma,separated"></div>
+          <div class="frow checks">
+            <label style="width:110px"></label>
+            <label style="width:auto"><input type="checkbox" id="runPin"> pin result</label>
+            <label style="width:auto"><input type="checkbox" id="runIncludePinned" checked> include pinned context</label>
+          </div>
+          <div class="frow"><label></label><button class="btn primary" id="runBtn" onclick="doRun()">&#9878; run</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="term">
+      <div class="term-h">activity log</div>
+      <div class="term-body" id="log"></div>
+    </div>
+  </div>
+
+  <!-- ARTIFACTS -->
+  <div class="view" id="view-artifacts">
+    <div class="art-cols">
+      <div class="art-list">
+        <div class="alist-head">
+          <input id="artFilter" placeholder="filter artifacts… (name, tag, type)" oninput="renderArtifactList()">
+          <div style="display:flex;gap:8px">
+            <label style="color:var(--muted);font-size:11.5px"><input type="checkbox" id="artAllVersions" onchange="loadArtifacts()"> all versions</label>
+            <span class="spacer"></span>
+            <button class="btn" onclick="dlgArtifact.showModal()">+ artifact</button>
+          </div>
+        </div>
+        <div id="artList"></div>
+      </div>
+      <div class="art-detail" id="artDetail"><div class="empty">Select an artifact.</div></div>
+    </div>
+  </div>
+
+  <!-- CUES -->
+  <div class="view" id="view-cues">
+    <div class="cue-cols">
+      <div class="cue-list" id="cueList"></div>
+      <div class="cue-detail" id="cueDetail"><div class="empty">Select a cue.</div></div>
+    </div>
+  </div>
+
+  <!-- PROVIDERS -->
+  <div class="view" id="view-providers">
+    <div class="prov-wrap" id="provWrap"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span id="sbWorkspace"></span>
+  <span id="sbProviders"></span>
+  <span id="sbCues"></span>
+  <span class="spacer"></span>
+  <span id="sbProject"></span>
+</div>
+<div id="toast"></div>
+
+<dialog id="dlgProject">
+  <h2>New project</h2>
+  <div class="frow"><label>name</label><input id="npName"></div>
+  <div class="frow"><label>description</label><input id="npDesc"></div>
+  <div class="frow"><label>tags</label><input id="npTags" placeholder="comma,separated"></div>
+  <div class="actions"><button class="btn" onclick="dlgProject.close()">cancel</button><button class="btn primary" onclick="createProject()">create</button></div>
+</dialog>
+
+<dialog id="dlgArtifact">
+  <h2>New artifact</h2>
+  <div class="frow"><label>name</label><input id="naName"></div>
+  <div class="frow"><label>type</label><select id="naType"></select></div>
+  <div class="frow" style="align-items:flex-start"><label>content</label><textarea id="naContent" rows="7" style="flex:1"></textarea></div>
+  <div class="frow"><label>tags</label><input id="naTags" placeholder="comma,separated"></div>
+  <div class="frow checks"><label></label><label style="width:auto"><input type="checkbox" id="naPin"> pin</label></div>
+  <div class="actions"><button class="btn" onclick="dlgArtifact.close()">cancel</button><button class="btn primary" onclick="createArtifact()">add</button></div>
+</dialog>
+
+<script>
+/* ── state ─────────────────────────────────── */
+const state = {
+  workspace: null,
+  projects: [],
+  projectId: null,
+  project: null,
+  artifacts: [],
+  selectedArtifact: null,
+  cues: [],
+  cuesError: null,
+  selectedCue: null,
+};
+
+/* ── helpers ───────────────────────────────── */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+  if (!res.ok) throw new Error((data && data.error) || res.status + ' ' + res.statusText);
+  return data;
+}
+function post(path, body) {
+  return api(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+}
+function toast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg; t.className = isErr ? 'err' : ''; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3600);
+}
+function log(html) {
+  const t = $('log');
+  const ts = new Date().toTimeString().slice(0,8);
+  t.innerHTML += `<span class="dm">${ts}</span> ${html}\n`;
+  t.scrollTop = t.scrollHeight;
+}
+
+/* ── view switching ────────────────────────── */
+document.querySelectorAll('.rail button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.rail button').forEach(x => x.classList.remove('on'));
+    document.querySelectorAll('.view').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    $('view-' + b.dataset.view).classList.add('on');
+  };
+});
+
+/* ── bootstrap ─────────────────────────────── */
+async function boot() {
+  try {
+    state.workspace = await api('/api/workspace');
+    $('envInfo').textContent = 'workspace: ' + state.workspace.home;
+    $('sbWorkspace').textContent = state.workspace.home;
+    fillTypeSelects();
+    renderProviders(state.workspace.providers);
+    probeProviders();
+  } catch (e) { toast('workspace: ' + e.message, true); }
+  await loadProjects();
+  await loadCues();
+  log('<span class="okx">ui ready</span> — connected to loomwork server');
+}
+
+function fillTypeSelects() {
+  const types = state.workspace.artifactTypes || [];
+  for (const sel of [$('runType'), $('naType')]) {
+    sel.innerHTML = types.map(t => `<option${t==='generated'&&sel.id==='runType'?' selected':''}>${esc(t)}</option>`).join('');
+  }
+}
+
+/* ── projects ──────────────────────────────── */
+async function loadProjects(keepSelection) {
+  try {
+    const data = await api('/api/projects');
+    state.projects = data.projects || [];
+  } catch (e) { toast('projects: ' + e.message, true); return; }
+  const sel = $('projSelect');
+  sel.innerHTML = state.projects.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')
+    || '<option value="">(no projects — create one)</option>';
+  if (keepSelection && state.projectId && state.projects.some(p => p.id === state.projectId)) {
+    sel.value = state.projectId;
+  }
+  sel.onchange = () => selectProject(sel.value);
+  if (state.projects.length) await selectProject(sel.value);
+  else { state.projectId = null; state.project = null; state.artifacts = []; renderArtifactList(); renderRunArtifacts(); renderStatus(); }
+}
+
+async function selectProject(id) {
+  if (!id) return;
+  state.projectId = id;
+  $('projSelect').value = id;
+  try { state.project = await api('/api/projects/' + encodeURIComponent(id)); }
+  catch (e) { toast(e.message, true); return; }
+  await loadArtifacts();
+  renderStatus();
+}
+
+async function createProject() {
+  try {
+    const p = await post('/api/projects', { name: $('npName').value, description: $('npDesc').value, tags: splitTags($('npTags').value) });
+    dlgProject.close();
+    toast('project created: ' + p.name);
+    log(`<span class="p">POST /api/projects</span> → <span class="okx">created</span> ${esc(p.name)} (${esc(p.id)})`);
+    state.projectId = p.id;
+    await loadProjects(true);
+  } catch (e) { toast(e.message, true); }
+}
+
+function splitTags(raw) { return raw.split(',').map(s => s.trim()).filter(Boolean); }
+
+function renderStatus() {
+  const p = state.project;
+  $('sbProject').textContent = p
+    ? `project ${p.name} · ${p.artifacts.length} artifacts · ${p.artifacts.filter(a=>a.pinned).length} pinned`
+    : 'no project';
+}
+
+/* ── artifacts ─────────────────────────────── */
+async function loadArtifacts() {
+  if (!state.projectId) { state.artifacts = []; renderArtifactList(); renderRunArtifacts(); return; }
+  const all = $('artAllVersions').checked ? '?all=true' : '';
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.projectId)}/artifacts${all}`);
+    state.artifacts = data.artifacts || [];
+  } catch (e) { toast(e.message, true); return; }
+  renderArtifactList();
+  renderRunArtifacts();
+}
+
+function renderArtifactList() {
+  const q = ($('artFilter').value || '').toLowerCase();
+  const list = $('artList');
+  const items = state.artifacts.filter(a =>
+    !q || a.name.toLowerCase().includes(q) || a.type.includes(q) || (a.tags||[]).some(t => t.toLowerCase().includes(q)));
+  list.innerHTML = items.length ? '' : '<div class="empty">No artifacts.</div>';
+  for (const a of items) {
+    const d = document.createElement('div');
+    d.className = 'art' + (state.selectedArtifact === a.id ? ' sel' : '');
+    d.innerHTML = `<div class="row1">${a.pinned ? '<span class="pinmark">&#128204;</span>' : ''}<span class="name">${esc(a.name)}</span><span class="tag tg-${esc(a.type)}">${esc(a.type)}</span><span class="vv">v${a.version}</span></div><div class="meta">${esc((a.tags||[]).join(', ') || a.id)}</div>`;
+    d.onclick = () => selectArtifact(a.id);
+    list.appendChild(d);
+  }
+}
+
+async function selectArtifact(ref) {
+  let detail;
+  try { detail = await api(`/api/projects/${encodeURIComponent(state.projectId)}/artifacts/${encodeURIComponent(ref)}`); }
+  catch (e) { toast(e.message, true); return; }
+  const a = detail.artifact;
+  state.selectedArtifact = a.id;
+  renderArtifactList();
+  const history = detail.history || [];
+  const lineage = history.length > 1
+    ? `<div class="lineage">${history.map(h => `<span class="node${h.id===a.id?' cur':''}" onclick="selectArtifact('${esc(h.id)}')">v${h.version}</span>`).join('<span class="arr">→</span>')}</div>` : '';
+  const parentLink = a.parentId
+    ? `<span class="node" onclick="selectArtifact('${esc(a.parentId)}')">parent: ${esc(a.parentId)}</span>` : '';
+  const meta = Object.entries(a.metadata || {}).map(([k,v]) => `<span class="k">${esc(k)}</span><span class="val">${esc(v)}</span>`).join('');
+  $('artDetail').innerHTML = `
+    <div class="d-head">
+      <div style="flex:1"><h1>${esc(a.name)} <span style="font-family:var(--mono);font-size:11px;color:var(--dim)">v${a.version} · ${esc(a.id)}</span></h1>
+      <div class="sub">${esc(a.type)} · created ${esc(a.createdAt)}</div></div>
+      <button class="btn" onclick="togglePin('${esc(a.id)}', ${!a.pinned})">&#128204; ${a.pinned ? 'Unpin' : 'Pin'}</button>
+      <button class="btn primary" onclick="runWith('${esc(a.id)}')">&#9654; Run prompt</button>
+    </div>
+    ${lineage}
+    ${parentLink ? `<div class="lineage">${parentLink}<span class="arr">→</span><span class="node cur">${esc(a.name)} v${a.version}</span></div>` : ''}
+    <div class="card"><h3>Properties</h3><div class="kv">
+      <span class="k">type</span><span class="val">${esc(a.type)}</span>
+      <span class="k">version</span><span class="val">v${a.version}</span>
+      <span class="k">pinned</span><span class="val">${a.pinned ? 'yes — included with include-pinned' : 'no'}</span>
+      <span class="k">parent</span><span class="val">${esc(a.parentId || '—')}</span>
+      <span class="k">tags</span><span class="val">${esc((a.tags||[]).join(', ') || '—')}</span>
+      ${a.body && a.body.ref ? `<span class="k">ref</span><span class="val">${esc(a.body.ref)}</span>` : ''}
+      ${meta}
+    </div></div>
+    <div class="card"><h3>Content</h3><div class="body">${esc(detail.content)}</div></div>`;
+}
+
+async function togglePin(id, pinned) {
+  try {
+    const a = await post(`/api/projects/${encodeURIComponent(state.projectId)}/artifacts/${encodeURIComponent(id)}/pin`, { pinned });
+    toast((pinned ? 'Pinned ' : 'Unpinned ') + a.name + ' — standing context updated');
+    log(`<span class="p">POST …/artifacts/${esc(id)}/pin</span> → <span class="okx">${pinned?'pinned':'unpinned'}</span> ${esc(a.name)}`);
+    await selectProject(state.projectId);
+    if (state.selectedArtifact) await selectArtifact(state.selectedArtifact);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function createArtifact() {
+  if (!state.projectId) { toast('create a project first', true); return; }
+  try {
+    const a = await post(`/api/projects/${encodeURIComponent(state.projectId)}/artifacts`, {
+      name: $('naName').value, type: $('naType').value, content: $('naContent').value,
+      tags: splitTags($('naTags').value), pinned: $('naPin').checked,
+    });
+    dlgArtifact.close();
+    toast(`artifact added: ${a.name} v${a.version}`);
+    log(`<span class="p">POST …/artifacts</span> → <span class="okx">added</span> ${esc(a.name)} v${a.version} (${esc(a.id)})`);
+    await selectProject(state.projectId);
+    selectArtifact(a.id);
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ── workbench run ─────────────────────────── */
+function renderRunArtifacts() {
+  const sel = $('runArtifact');
+  const prev = sel.value;
+  sel.innerHTML = state.artifacts.map(a => `<option value="${esc(a.id)}">${esc(a.name)} v${a.version} (${esc(a.type)})</option>`).join('')
+    || '<option value="">(no artifacts)</option>';
+  if (prev && state.artifacts.some(a => a.id === prev)) sel.value = prev;
+  sel.onchange = () => showTarget(sel.value);
+  if (sel.value) showTarget(sel.value);
+}
+
+async function showTarget(ref) {
+  if (!ref) return;
+  try {
+    const detail = await api(`/api/projects/${encodeURIComponent(state.projectId)}/artifacts/${encodeURIComponent(ref)}`);
+    const a = detail.artifact;
+    $('wbTargetHead').innerHTML = `<span class="tag tg-${esc(a.type)}">${esc(a.type)}</span> ${esc(a.name)} <span class="v">v${a.version} · ${esc(a.id)}${a.parentId ? ' · parent: ' + esc(a.parentId) : ''}</span><span class="act" onclick="openArtifact('${esc(a.id)}')">open in artifacts →</span>`;
+    $('wbTargetContent').textContent = detail.content;
+  } catch (e) { toast(e.message, true); }
+}
+
+function openArtifact(id) {
+  document.querySelector('.rail button[data-view=artifacts]').click();
+  selectArtifact(id);
+}
+function runWith(id) {
+  document.querySelector('.rail button[data-view=workbench]').click();
+  $('runArtifact').value = id;
+  showTarget(id);
+}
+
+$('runSource').onchange = () => {
+  const useCue = $('runSource').value === 'cue';
+  $('rowPrompt').style.display = useCue ? 'none' : '';
+  $('rowCue').style.display = useCue ? '' : 'none';
+  renderCueVars();
+};
+$('runCue') && ($('runCue').onchange = renderCueVars);
+
+function renderCueVars() {
+  const wrap = $('cueVars');
+  wrap.innerHTML = '';
+  if ($('runSource').value !== 'cue') return;
+  const cue = state.cues.find(c => (c.id || c.name) === $('runCue').value);
+  for (const v of (cue && cue.variables) || []) {
+    const d = document.createElement('div');
+    d.className = 'frow';
+    d.innerHTML = `<label style="font-family:var(--mono);color:var(--amber)">{{${esc(v)}}}</label><input data-var="${esc(v)}" placeholder="value for ${esc(v)}">`;
+    wrap.appendChild(d);
+  }
+}
+
+async function doRun() {
+  if (!state.projectId) { toast('select a project first', true); return; }
+  const useCue = $('runSource').value === 'cue';
+  const body = {
+    projectRef: state.projectId,
+    artifactRef: $('runArtifact').value,
+    selector: $('runSelector').value.trim(),
+    outputName: $('runName').value.trim(),
+    outputType: $('runType').value,
+    tags: splitTags($('runTags').value),
+    pin: $('runPin').checked,
+    includePinned: $('runIncludePinned').checked,
+  };
+  if (useCue) {
+    body.cueRef = $('runCue').value;
+    body.variables = {};
+    document.querySelectorAll('#cueVars input').forEach(i => body.variables[i.dataset.var] = i.value);
+  } else {
+    body.prompt = $('runPrompt').value;
+  }
+  const btn = $('runBtn');
+  btn.disabled = true; btn.textContent = '… running';
+  log(`<span class="p">POST /api/run</span> ${esc(body.selector)} → artifact ${esc(body.artifactRef)}${useCue ? ' · cue ' + esc(body.cueRef) : ''}`);
+  try {
+    const result = await post('/api/run', body);
+    const g = result.Generated || result.generated;
+    log(`<span class="okx">✓ generated</span> ${esc(g.name)} v${g.version} (${esc(g.id)}) — ${esc(result.Provider || result.provider)}/${esc(result.Model || result.model)} in ${result.DurationMs || result.durationMs}ms`);
+    toast(`generated ${g.name} v${g.version}`);
+    await selectProject(state.projectId);
+    runWith(g.id);
+    openArtifact(g.id);
+    document.querySelector('.rail button[data-view=workbench]').click();
+  } catch (e) {
+    log(`<span class="errx">✗ run failed</span> ${esc(e.message)}`);
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '&#9878; run';
+  }
+}
+
+/* ── cues ──────────────────────────────────── */
+async function loadCues() {
+  try {
+    const data = await api('/api/cues');
+    state.cues = data.cues || [];
+    state.cuesError = data.unavailable || null;
+  } catch (e) { state.cues = []; state.cuesError = e.message; }
+  $('sbCues').innerHTML = state.cuesError
+    ? 'cue-note <span class="sb-warn">unavailable</span>'
+    : `cue-note <span class="sb-ok">ok</span> · ${state.cues.length} cues`;
+  const list = $('cueList');
+  list.innerHTML = state.cues.length ? '' :
+    `<div class="empty">${state.cuesError ? 'cue-note unavailable:\n' + esc(state.cuesError) : 'No cues.'}</div>`;
+  for (const c of state.cues) {
+    const d = document.createElement('div');
+    d.className = 'cue';
+    d.innerHTML = `<div class="nm">${esc(c.name)}</div><div class="ds">${esc((c.tags||[]).join(', ') || c.id)}</div>`;
+    d.onclick = () => selectCue(c);
+    list.appendChild(d);
+  }
+  $('runCue').innerHTML = state.cues.map(c => `<option value="${esc(c.id || c.name)}">${esc(c.name)}</option>`).join('')
+    || '<option value="">(cue-note unavailable)</option>';
+}
+
+function selectCue(c) {
+  state.selectedCue = c;
+  document.querySelectorAll('#cueList .cue').forEach(x => x.classList.toggle('sel', x.firstChild.textContent === c.name));
+  $('cueDetail').innerHTML = `
+    <div class="d-head"><div style="flex:1"><h1 style="font-family:var(--mono);font-size:15px">${esc(c.name)}</h1>
+    <div class="sub">${esc(c.id || '')} · system of record: cue-note · read-only here</div></div>
+    <button class="btn primary" onclick="useCue('${esc(c.id || c.name)}')">&#9654; Run with cue</button></div>
+    <div class="card"><h3>Template</h3><div class="body">${esc(c.body)}</div></div>
+    ${(c.variables||[]).length ? `<div class="card"><h3>Variables</h3><div class="kv">${c.variables.map(v => `<span class="k">{{${esc(v)}}}</span><span class="val">supplied at run time</span>`).join('')}</div></div>` : ''}`;
+}
+
+function useCue(ref) {
+  document.querySelector('.rail button[data-view=workbench]').click();
+  $('runSource').value = 'cue';
+  $('runSource').onchange();
+  $('runCue').value = ref;
+  renderCueVars();
+}
+
+/* ── providers ─────────────────────────────── */
+function renderProviders(providers) {
+  const wrap = $('provWrap');
+  const rows = (providers || []).map((p, i) => {
+    const st = p.reachable === true ? 'up' : p.reachable === false ? 'off' : p.status === 'scaffold' ? 'off' : 'idle';
+    const detail = [p.baseUrl, p.defaultModel && 'default: ' + p.defaultModel,
+      p.status === 'scaffold' ? 'scaffold — request mapping deferred' : p.reachable === true ? (p.models||[]).length + ' models' : p.reachable === false ? 'unreachable' : 'not probed']
+      .filter(Boolean).join(' · ');
+    return `<div class="prov"${i ? ' style="border-top:1px solid var(--border)"' : ''}><span class="st ${st}"></span><span class="nm">${esc(p.name)}</span><span class="detail2">${esc(detail)}${(p.models||[]).length ? '<br>' + esc(p.models.join(', ')) : ''}</span></div>`;
+  }).join('');
+  const presets = (state.workspace.presetGroups || []).map(k =>
+    `<div class="prov" style="border-top:1px solid var(--border)"><span class="detail2">${esc(k)}</span></div>`).join('');
+  wrap.innerHTML = `
+    <div class="card"><h3>Providers</h3>${rows || '<div class="empty">None configured.</div>'}</div>
+    <div class="card"><h3>Preset groups (presets.json)</h3>${presets || '<div class="empty">No presets defined.</div>'}</div>`;
+  const up = (providers||[]).filter(p => p.reachable === true).map(p => p.name);
+  $('sbProviders').innerHTML = up.length
+    ? `<span class="sb-ok">● ${esc(up.join(', '))} reachable</span>`
+    : 'providers: probing…';
+}
+
+async function probeProviders() {
+  try {
+    const ws = await api('/api/workspace?probe=true');
+    state.workspace = ws;
+    renderProviders(ws.providers);
+    const up = (ws.providers||[]).filter(p => p.reachable === true);
+    $('sbProviders').innerHTML = up.length
+      ? `<span class="sb-ok">● ${esc(up.map(p=>p.name).join(', '))} reachable</span>`
+      : '<span class="sb-warn">no providers reachable</span>';
+  } catch (e) { $('sbProviders').innerHTML = '<span class="sb-err">provider probe failed</span>'; }
+}
+
+boot();
+</script>
+</body>
+</html>

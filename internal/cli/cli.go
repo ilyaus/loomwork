@@ -40,6 +40,7 @@ Commands:
                    [--dry-run] [--arg VALUE ...] [--timeout SECONDS]
                    [--name NAME] [--tags a,b]
   providers        list configured providers, presets, and credential status
+  serve            [--addr HOST:PORT] start the HTTP API + web UI (default 127.0.0.1:8790)
 
 Global flags (accepted by every command):
   --home PATH   workspace directory (default $LOOMWORK_HOME or ~/.loomwork)
@@ -87,6 +88,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		})
 	case "providers":
 		return runCommand(providersList, rest, stdout, stderr)
+	case "serve":
+		return runCommand(serve, rest, stdout, stderr)
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", group, usage)
 	}
