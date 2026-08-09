@@ -1,0 +1,43 @@
+{
+  "providers": {
+    "ollama": {
+      "kind": "ollama",
+      "baseUrl": "http://localhost:11434",
+      "defaultModel": "qwen3:8b",
+      "timeoutSeconds": 180
+    },
+    "lmstudio": {
+      "kind": "lmstudio",
+      "baseUrl": "http://localhost:1234/v1",
+      "defaultModel": "qwen/qwen3-8b"
+    },
+    "azure": {
+      "kind": "azure",
+      "azure": {
+        "endpoint": "https://YOUR-RESOURCE.openai.azure.com",
+        "deployment": "YOUR-DEPLOYMENT",
+        "apiVersion": "2024-10-21",
+        "apiKeyEnv": "AZURE_AI_API_KEY"
+      }
+    },
+    "bedrock": {
+      "kind": "bedrock",
+      "bedrock": {
+        "region": "us-east-1",
+        "modelId": "anthropic.claude-3-5-sonnet-20241022-v2:0"
+      }
+    },
+    "imgen": {
+      "kind": "imgen",
+      "baseUrl": "http://localhost:8000",
+      "imgen": {
+        "pollIntervalSeconds": 2
+      }
+    }
+  },
+  "cuenote": {
+    "baseUrl": "http://localhost:8090",
+    "timeoutSeconds": 15
+  },
+  "systemPrompt": "You are Loomwork, an assistant that analyzes and transforms project artifacts. Answer using only the supplied artifacts."
+}

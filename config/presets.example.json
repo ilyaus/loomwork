@@ -1,0 +1,55 @@
+{
+  "entries": [
+    {
+      "provider": "ollama",
+      "model": "*",
+      "defaults": {
+        "temperature": 0.2,
+        "top_p": 0.9
+      },
+      "presets": {
+        "deterministic": {
+          "temperature": 0,
+          "seed": 7
+        }
+      }
+    },
+    {
+      "provider": "ollama",
+      "model": "qwen3:8b",
+      "defaults": {
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "num_ctx": 8192
+      },
+      "presets": {
+        "log-triage": {
+          "temperature": 0.1,
+          "max_output_tokens": 2048,
+          "extra": {
+            "repeat_last_n": 128
+          }
+        },
+        "brainstorm": {
+          "temperature": 0.9,
+          "top_p": 0.95,
+          "top_k": 80
+        }
+      }
+    },
+    {
+      "provider": "lmstudio",
+      "model": "qwen/qwen3-8b",
+      "defaults": {
+        "temperature": 0.3,
+        "max_output_tokens": 4096
+      },
+      "presets": {
+        "summarize": {
+          "temperature": 0.15,
+          "stop": ["### END"]
+        }
+      }
+    }
+  ]
+}
