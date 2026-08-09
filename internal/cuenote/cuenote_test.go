@@ -3,6 +3,7 @@ package cuenote
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -192,4 +193,61 @@ func cueNames(cues []Cue) []string {
 		names = append(names, cue.Name)
 	}
 	return names
+}
+
+func TestResolve(t *testing.T) {
+	ctx := context.Background()
+	client := NewMemoryClient()
+	triage, err := client.CreateCue(ctx, Cue{Name: "triage", Body: "Summarize {{service}}"})
+	if err != nil {
+		t.Fatalf("CreateCue: %v", err)
+	}
+	if _, err := client.CreateCue(ctx, Cue{Name: "review", Body: "Review"}); err != nil {
+		t.Fatalf("CreateCue: %v", err)
+	}
+
+	byID, err := Resolve(ctx, client, triage.ID)
+	if err != nil || byID.ID != triage.ID {
+		t.Fatalf("Resolve by id = %+v, %v", byID, err)
+	}
+	byName, err := Resolve(ctx, client, "TrIaGe")
+	if err != nil || byName.ID != triage.ID {
+		t.Fatalf("Resolve by name = %+v, %v", byName, err)
+	}
+
+	if _, err := Resolve(ctx, client, "  "); err == nil {
+		t.Error("expected an error for an empty reference")
+	}
+	if _, err := Resolve(ctx, client, "absent"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Resolve error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestResolveRejectsAmbiguousNames(t *testing.T) {
+	ctx := context.Background()
+	client := NewMemoryClient()
+	// The memory client rejects duplicate names, so use a client that does not.
+	duplicates := ambiguousClient{Client: client, cues: []Cue{
+		{ID: "cue-1", Name: "triage"},
+		{ID: "cue-2", Name: "Triage"},
+	}}
+	_, err := Resolve(ctx, duplicates, "triage")
+	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("Resolve error = %v, want an ambiguity error", err)
+	}
+	if !strings.Contains(err.Error(), "cue-1") || !strings.Contains(err.Error(), "cue-2") {
+		t.Errorf("error = %v, want both candidate ids listed", err)
+	}
+}
+
+// ambiguousClient serves a fixed cue list so duplicate names can be exercised.
+type ambiguousClient struct {
+	Client
+	cues []Cue
+}
+
+func (a ambiguousClient) ListCues(context.Context, CueFilter) ([]Cue, error) { return a.cues, nil }
+
+func (a ambiguousClient) GetCue(_ context.Context, id string) (Cue, error) {
+	return Cue{}, fmt.Errorf("cue %q: %w", id, ErrNotFound)
 }

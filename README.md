@@ -67,8 +67,26 @@ duration: 2.4s     tokens: 120 prompt / 24 completion
 
 Every command accepts `--home PATH` (workspace override) and `--json`
 (machine-readable output). `loomwork --help` lists the full command set:
-`project create|list|show`, `artifact add|list|show|pin|unpin`, `run`, and
-`providers`.
+`project create|list|show`, `artifact add|list|show|pin|unpin`, `cue list|show`,
+`run`, and `providers`.
+
+### Reusable prompts (cues)
+
+A prompt can come from a cue-note cue instead of `--prompt`/`--prompt-file`:
+
+```bash
+loomwork cue list --tag ops
+loomwork cue show --cue log-triage
+loomwork run --project triage --artifact api.log --model ollama/qwen3:8b \
+    --cue log-triage --var service=checkout --var since=2024-05-01
+```
+
+`--cue` accepts a cue id or an exact (case-insensitive) name; an ambiguous name is
+rejected rather than guessed. `{{var}}` placeholders in the cue body are filled from
+`--var key=value`, and a missing value fails before any provider is called. The
+generated artifact records `cue` and `cueId` metadata so a run can be traced back to
+the prompt that produced it. Point the CLI at a cue-note instance with the
+`cuenote.baseUrl` config key (default `http://localhost:8090`).
 
 Artifact bodies come from exactly one of `--content TEXT` (inline),
 `--file PATH` (copied into the project), or `--ref PATH` (referenced in place and
@@ -149,6 +167,7 @@ code. Copy [`config/presets.example.json`](config/presets.example.json) to
 | [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) | Functional and non-functional requirements |
 | [`docs/architecture.md`](docs/architecture.md) | Layering, domain model, provider mapping, presets, persistence |
 | [`docs/cue-note-contract.md`](docs/cue-note-contract.md) | Assumed cue-note REST contract |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Sequenced next work items with acceptance criteria |
 
 ## Layout
 
@@ -176,6 +195,6 @@ These are specified in `docs/INTENT.md` and have named extension points, but are
   through the existing `im-gen` adapter.
 - **Azure AI Foundry and Bedrock adapters** — constructors, config, and credential
   handling exist; `Generate` returns `provider.ErrNotImplemented`.
-- **cue-note HTTP integration** — the client exists; the CLI does not yet resolve
-  prompts from cues.
 - **HTTP surface** — a `cmd/server` sibling reusing `internal/orchestrator` unchanged.
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) sequences these with scope and acceptance criteria.

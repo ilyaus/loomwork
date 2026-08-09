@@ -67,6 +67,44 @@ type Client interface {
 	CreateNote(ctx context.Context, note Note) (Note, error)
 }
 
+// Resolve finds a cue by id, falling back to an exact case-insensitive name
+// match. An ambiguous name is an error: silently picking one of several cues
+// would make a prompt run irreproducible.
+func Resolve(ctx context.Context, client Client, ref string) (Cue, error) {
+	trimmed := strings.TrimSpace(ref)
+	if trimmed == "" {
+		return Cue{}, fmt.Errorf("cue reference is required")
+	}
+	if cue, err := client.GetCue(ctx, trimmed); err == nil {
+		return cue, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return Cue{}, err
+	}
+
+	cues, err := client.ListCues(ctx, CueFilter{Search: trimmed})
+	if err != nil {
+		return Cue{}, err
+	}
+	matches := make([]Cue, 0, 1)
+	for _, cue := range cues {
+		if strings.EqualFold(strings.TrimSpace(cue.Name), trimmed) {
+			matches = append(matches, cue)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return Cue{}, fmt.Errorf("cue %q: %w", trimmed, ErrNotFound)
+	case 1:
+		return matches[0], nil
+	default:
+		ids := make([]string, 0, len(matches))
+		for _, cue := range matches {
+			ids = append(ids, cue.ID)
+		}
+		return Cue{}, fmt.Errorf("cue name %q is ambiguous: matches %s; use an id", trimmed, strings.Join(ids, ", "))
+	}
+}
+
 var templateVariable = regexp.MustCompile(`{{\s*([a-zA-Z0-9_.-]+)\s*}}`)
 
 // TemplateVariables lists the distinct `{{var}}` placeholders in a body, sorted.

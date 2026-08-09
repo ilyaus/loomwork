@@ -420,3 +420,38 @@ func TestRunResultJSONReportsDurationInMilliseconds(t *testing.T) {
 		t.Errorf("metadata durationMs = %q, want \"1500\"", result.Generated.Metadata["durationMs"])
 	}
 }
+
+func TestRunPromptCallerMetadata(t *testing.T) {
+	generator := &fakeGenerator{
+		name:     "ollama",
+		response: provider.Response{Text: "answer", Model: "qwen3:8b"},
+	}
+	harness := newHarness(t, generator, nil)
+
+	result, err := harness.orchestrator.RunPrompt(context.Background(), RunRequest{
+		ProjectRef:  "triage",
+		ArtifactRef: "api.log",
+		Selector:    "ollama/qwen3:8b",
+		Prompt:      "summarize",
+		Metadata: map[string]string{
+			"cue":      "triage",
+			"cueId":    "cue-1",
+			"blank":    "   ",
+			"provider": "forged",
+		},
+	})
+	if err != nil {
+		t.Fatalf("RunPrompt: %v", err)
+	}
+
+	metadata := result.Generated.Metadata
+	if metadata["cue"] != "triage" || metadata["cueId"] != "cue-1" {
+		t.Errorf("metadata = %v, want the caller keys recorded", metadata)
+	}
+	if _, present := metadata["blank"]; present {
+		t.Errorf("metadata = %v, want blank values dropped", metadata)
+	}
+	if metadata["provider"] != "ollama" {
+		t.Errorf("metadata provider = %q, want the orchestrator's value to win", metadata["provider"])
+	}
+}

@@ -14,16 +14,19 @@ import (
 )
 
 func runPrompt(e *env, args []string) error {
-	var projectRef, artifactRef, selector, prompt, promptFile, systemPrompt, outputName, outputType, tags string
+	var projectRef, artifactRef, selector, prompt, promptFile, cueRef, systemPrompt, outputName, outputType, tags string
 	var pin, includePinned bool
 	var temperature, topP float64
 	var maxTokens, seed, topK int
+	variables := variableFlag{}
 	err := e.parse("run", args, func(flags *flag.FlagSet) {
 		flags.StringVar(&projectRef, "project", "", "project id or name (required)")
 		flags.StringVar(&artifactRef, "artifact", "", "artifact id, or name for its latest revision (required)")
 		flags.StringVar(&selector, "model", "", "provider/model[#preset], e.g. ollama/qwen3:8b#code-review (required)")
 		flags.StringVar(&prompt, "prompt", "", "prompt text")
 		flags.StringVar(&promptFile, "prompt-file", "", "read the prompt from this file")
+		flags.StringVar(&cueRef, "cue", "", "use a cue-note cue (id or name) as the prompt")
+		flags.Var(variables, "var", "key=value for a cue template variable (repeatable)")
 		flags.StringVar(&systemPrompt, "system", "", "override the workspace system prompt")
 		flags.StringVar(&outputName, "name", "", "name for the produced artifact")
 		flags.StringVar(&outputType, "type", "", "type for the produced artifact (default generated)")
@@ -42,8 +45,17 @@ func runPrompt(e *env, args []string) error {
 	if strings.TrimSpace(projectRef) == "" || strings.TrimSpace(artifactRef) == "" || strings.TrimSpace(selector) == "" {
 		return fmt.Errorf("run: --project, --artifact, and --model are required")
 	}
-	if (strings.TrimSpace(prompt) == "") == (strings.TrimSpace(promptFile) == "") {
-		return fmt.Errorf("run: supply exactly one of --prompt or --prompt-file")
+	sources := 0
+	for _, source := range []string{prompt, promptFile, cueRef} {
+		if strings.TrimSpace(source) != "" {
+			sources++
+		}
+	}
+	if sources != 1 {
+		return fmt.Errorf("run: supply exactly one of --prompt, --prompt-file, or --cue")
+	}
+	if len(variables) > 0 && strings.TrimSpace(cueRef) == "" {
+		return fmt.Errorf("run: --var applies to --cue only")
 	}
 	if strings.TrimSpace(promptFile) != "" {
 		raw, readErr := os.ReadFile(promptFile)
@@ -51,6 +63,18 @@ func runPrompt(e *env, args []string) error {
 			return fmt.Errorf("read --prompt-file %s: %w", promptFile, readErr)
 		}
 		prompt = string(raw)
+	}
+
+	ctx := context.Background()
+	metadata := map[string]string{}
+	if strings.TrimSpace(cueRef) != "" {
+		cue, rendered, cueErr := resolveCuePrompt(ctx, e.cues, cueRef, variables)
+		if cueErr != nil {
+			return cueErr
+		}
+		prompt = rendered
+		metadata["cue"] = cue.Name
+		metadata["cueId"] = cue.ID
 	}
 
 	overrides := provider.Params{}
@@ -80,7 +104,7 @@ func runPrompt(e *env, args []string) error {
 	}
 
 	engine := orchestrator.New(e.config, e.store, e.presets, nil)
-	result, err := engine.RunPrompt(context.Background(), orchestrator.RunRequest{
+	result, err := engine.RunPrompt(ctx, orchestrator.RunRequest{
 		ProjectRef:    projectRef,
 		ArtifactRef:   artifactRef,
 		Selector:      selector,
@@ -92,6 +116,7 @@ func runPrompt(e *env, args []string) error {
 		Pin:           pin,
 		IncludePinned: includePinned,
 		Overrides:     overrides,
+		Metadata:      metadata,
 	})
 	if err != nil {
 		return err
