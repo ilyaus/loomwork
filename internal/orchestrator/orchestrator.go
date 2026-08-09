@@ -71,6 +71,11 @@ type RunRequest struct {
 	IncludePinned bool
 	// Overrides win over every preset and default.
 	Overrides provider.Params
+	// Metadata records caller-supplied provenance on the produced artifact, for
+	// callers that know something the orchestrator does not (which cue supplied
+	// the prompt, which workbench step produced it). Keys the orchestrator sets
+	// itself always win, so provenance cannot be forged.
+	Metadata map[string]string
 }
 
 // RunResult reports what a prompt run produced.
@@ -164,6 +169,12 @@ func (o *Orchestrator) RunPrompt(ctx context.Context, request RunRequest) (RunRe
 	}
 	if response.FinishReason != "" {
 		spec.Metadata["finishReason"] = response.FinishReason
+	}
+	for key, value := range request.Metadata {
+		if _, reserved := spec.Metadata[key]; reserved || strings.TrimSpace(value) == "" {
+			continue
+		}
+		spec.Metadata[key] = value
 	}
 
 	// Persist in one serialized read-modify-write cycle rather than saving the

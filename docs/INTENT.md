@@ -52,7 +52,9 @@ reusable prompts ("cues") and notes. Loomwork consumes it through a
 `cuenote.Client` interface with two implementations: an HTTP client against the
 assumed REST contract (documented in [`docs/cue-note-contract.md`](cue-note-contract.md))
 and an in-memory stub used for local work and tests, so Loomwork is never blocked
-on cue-note's completion.
+on cue-note's completion. The CLI exposes cues through `cue list`, `cue show`, and
+`run --cue REF [--var key=value]`, which renders a cue's `{{var}}` template into the
+prompt and records `cue`/`cueId` provenance on the generated artifact.
 
 ### 5. Wiki flow (deferred)
 Generate and maintain a project wiki from artifacts: chunk large specs/docs, run a
@@ -100,6 +102,7 @@ agnostic so a server can be added without touching domain or provider code.
 | `ImageGenerator` interface + `im-gen` HTTP adapter | **Implemented** (not CLI-exposed) |
 | Per-model preset registry + validation | **Implemented** |
 | `cue-note` client interface + HTTP impl + in-memory stub | **Implemented** (contract assumed) |
+| CLI cue listing/inspection and cue-driven prompt runs | **Implemented** |
 | CLI vertical slice: project → artifact → prompt run → new artifact | **Implemented** |
 | Wiki generation flow | Deferred |
 | Testing workbench / `api-test-runner` + `sdd-qa` loop | Deferred |

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ilyaus/loomwork/internal/config"
+	"github.com/ilyaus/loomwork/internal/cuenote"
 	"github.com/ilyaus/loomwork/internal/preset"
 	"github.com/ilyaus/loomwork/internal/store"
 )
@@ -28,7 +29,10 @@ Commands:
   artifact show    --project REF --artifact REF
   artifact pin     --project REF --artifact ID
   artifact unpin   --project REF --artifact ID
-  run              --project REF --artifact REF --model provider/model[#preset] --prompt TEXT|--prompt-file PATH
+  cue list         [--tag a,b] [--search TEXT] [--limit N]
+  cue show         --cue REF
+  run              --project REF --artifact REF --model provider/model[#preset]
+                   (--prompt TEXT | --prompt-file PATH | --cue REF [--var key=value ...])
                    [--name NAME] [--type TYPE] [--tags a,b] [--pin] [--include-pinned]
                    [--temperature N] [--top-p N] [--max-tokens N] [--seed N]
   providers        list configured providers, presets, and credential status
@@ -65,6 +69,11 @@ func Run(args []string, stdout, stderr io.Writer) error {
 			"show":  artifactShow,
 			"pin":   artifactPin,
 			"unpin": artifactUnpin,
+		})
+	case "cue":
+		return runGroup(rest, stdout, stderr, map[string]commandFunc{
+			"list": cueList,
+			"show": cueShow,
 		})
 	case "run":
 		return runCommand(runPrompt, rest, stdout, stderr)
@@ -107,6 +116,7 @@ type env struct {
 	config  config.Config
 	store   *store.FileStore
 	presets *preset.Registry
+	cues    cuenote.Client
 }
 
 type jsonWriter = io.Writer
@@ -143,6 +153,7 @@ func (e *env) open() error {
 		return err
 	}
 	e.store = projects
+	e.cues = cuenote.NewHTTPClient(cfg.CueNote)
 	return nil
 }
 
