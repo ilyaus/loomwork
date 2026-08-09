@@ -39,5 +39,10 @@
     "baseUrl": "http://localhost:8090",
     "timeoutSeconds": 15
   },
+  "workbench": {
+    "runnerPath": "/usr/local/bin/api-test-runner",
+    "env": ["HOME"],
+    "timeoutSeconds": 600
+  },
   "systemPrompt": "You are Loomwork, an assistant that analyzes and transforms project artifacts. Answer using only the supplied artifacts."
 }
