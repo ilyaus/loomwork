@@ -40,21 +40,18 @@ func artifactAdd(e *env, args []string) error {
 		return err
 	}
 
-	project, err := e.store.Resolve(projectRef)
-	if err != nil {
+	var artifact model.Artifact
+	if _, err := e.store.Update(projectRef, func(project *model.Project) error {
+		added, err := project.AddArtifact(model.ArtifactSpec{
+			Name:   name,
+			Type:   artifactType,
+			Body:   body,
+			Tags:   splitList(tags),
+			Pinned: pin,
+		})
+		artifact = added
 		return err
-	}
-	artifact, err := project.AddArtifact(model.ArtifactSpec{
-		Name:   name,
-		Type:   artifactType,
-		Body:   body,
-		Tags:   splitList(tags),
-		Pinned: pin,
-	})
-	if err != nil {
-		return err
-	}
-	if err := e.store.Save(project); err != nil {
+	}); err != nil {
 		return err
 	}
 	return e.emit(artifact, fmt.Sprintf("added artifact %s (%s v%d, %s)", artifact.Name, artifact.ID, artifact.Version, artifact.Type))
@@ -186,19 +183,16 @@ func setPinned(e *env, args []string, pinned bool, name string) error {
 	if strings.TrimSpace(projectRef) == "" || strings.TrimSpace(artifactRef) == "" {
 		return fmt.Errorf("%s: --project and --artifact are required", name)
 	}
-	project, err := e.store.Resolve(projectRef)
-	if err != nil {
+	var artifact model.Artifact
+	if _, err := e.store.Update(projectRef, func(project *model.Project) error {
+		target, ok := project.ResolveArtifact(artifactRef)
+		if !ok {
+			return fmt.Errorf("artifact %q not found in project %q", artifactRef, project.Name)
+		}
+		updated, err := project.SetPinned(target.ID, pinned)
+		artifact = updated
 		return err
-	}
-	target, ok := project.ResolveArtifact(artifactRef)
-	if !ok {
-		return fmt.Errorf("artifact %q not found in project %q", artifactRef, project.Name)
-	}
-	artifact, err := project.SetPinned(target.ID, pinned)
-	if err != nil {
-		return err
-	}
-	if err := e.store.Save(project); err != nil {
+	}); err != nil {
 		return err
 	}
 	verb := "pinned"

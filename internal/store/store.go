@@ -23,6 +23,11 @@ var ErrNotFound = errors.New("store: project not found")
 type ProjectStore interface {
 	Create(project *model.Project) error
 	Save(project *model.Project) error
+	// Update resolves a project, applies mutate, and persists the result as one
+	// serialized read-modify-write cycle. Callers that change a project must use
+	// Update rather than Load+Save so concurrent writers cannot lose each other's
+	// changes. A mutate error leaves the stored project untouched.
+	Update(ref string, mutate func(project *model.Project) error) (*model.Project, error)
 	Load(id string) (*model.Project, error)
 	FindByName(name string) (*model.Project, error)
 	// Resolve finds a project by id, then by name.
@@ -31,7 +36,9 @@ type ProjectStore interface {
 }
 
 // FileStore keeps one JSON document per project in a directory. Writes are
-// atomic (temp file + rename) so an interrupted run never truncates a project.
+// atomic (temp file + rename) so an interrupted run never truncates a project,
+// and read-modify-write cycles are serialized across processes by a lock file so
+// concurrent CLI invocations cannot lose each other's changes.
 type FileStore struct {
 	mu  sync.RWMutex
 	dir string
@@ -55,6 +62,11 @@ func (f *FileStore) Create(project *model.Project) error {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	release, err := f.lock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	existing, err := f.listLocked()
 	if err != nil {
@@ -75,7 +87,39 @@ func (f *FileStore) Save(project *model.Project) error {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	release, err := f.lock()
+	if err != nil {
+		return err
+	}
+	defer release()
 	return f.writeLocked(project)
+}
+
+// Update applies mutate to the resolved project while holding the store lock, so
+// the load and the save form one atomic cycle even across processes.
+func (f *FileStore) Update(ref string, mutate func(project *model.Project) error) (*model.Project, error) {
+	if mutate == nil {
+		return nil, fmt.Errorf("mutate function is required")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	release, err := f.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	project, err := f.resolveLocked(ref)
+	if err != nil {
+		return nil, err
+	}
+	if err := mutate(project); err != nil {
+		return nil, err
+	}
+	if err := f.writeLocked(project); err != nil {
+		return nil, err
+	}
+	return project, nil
 }
 
 // Load reads a project by id.
@@ -104,10 +148,25 @@ func (f *FileStore) FindByName(name string) (*model.Project, error) {
 
 // Resolve finds a project by id, then by name.
 func (f *FileStore) Resolve(ref string) (*model.Project, error) {
-	if project, err := f.Load(ref); err == nil {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.resolveLocked(ref)
+}
+
+func (f *FileStore) resolveLocked(ref string) (*model.Project, error) {
+	if project, err := f.readLocked(f.path(ref)); err == nil {
 		return project, nil
 	}
-	return f.FindByName(ref)
+	projects, err := f.listLocked()
+	if err != nil {
+		return nil, err
+	}
+	for _, project := range projects {
+		if strings.EqualFold(project.Name, ref) {
+			return project, nil
+		}
+	}
+	return nil, fmt.Errorf("project %q: %w", ref, ErrNotFound)
 }
 
 // List returns every project, ordered by name.

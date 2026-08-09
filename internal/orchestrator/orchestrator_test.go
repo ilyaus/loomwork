@@ -2,11 +2,13 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ilyaus/loomwork/internal/config"
 	"github.com/ilyaus/loomwork/internal/model"
@@ -375,5 +377,46 @@ func TestArtifactContent(t *testing.T) {
 	_, err = ArtifactContent(model.Artifact{Name: "remote", Body: model.Body{Ref: "https://example.com/log"}})
 	if err == nil || !strings.Contains(err.Error(), "remote references are not fetched") {
 		t.Errorf("error = %v, want remote references rejected", err)
+	}
+}
+
+func TestRunResultJSONReportsDurationInMilliseconds(t *testing.T) {
+	harness := newHarness(t, &fakeGenerator{response: provider.Response{Text: "ok"}}, nil)
+	calls := 0
+	base := time.Unix(1700000000, 0)
+	harness.orchestrator.now = func() time.Time {
+		calls++
+		if calls == 1 {
+			return base
+		}
+		return base.Add(1500 * time.Millisecond)
+	}
+
+	result, err := harness.orchestrator.RunPrompt(context.Background(), RunRequest{
+		ProjectRef:  "triage",
+		ArtifactRef: "api.log",
+		Selector:    "ollama/qwen3:8b",
+		Prompt:      "summarize",
+	})
+	if err != nil {
+		t.Fatalf("RunPrompt: %v", err)
+	}
+	if result.DurationMs != 1500 || result.Duration != 1500*time.Millisecond {
+		t.Fatalf("duration = %s / %dms, want 1500ms", result.Duration, result.DurationMs)
+	}
+
+	payload, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if decoded["durationMs"] != float64(1500) {
+		t.Errorf("durationMs = %v, want 1500 (milliseconds, not nanoseconds)", decoded["durationMs"])
+	}
+	if result.Generated.Metadata["durationMs"] != "1500" {
+		t.Errorf("metadata durationMs = %q, want \"1500\"", result.Generated.Metadata["durationMs"])
 	}
 }

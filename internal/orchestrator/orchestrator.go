@@ -75,17 +75,20 @@ type RunRequest struct {
 
 // RunResult reports what a prompt run produced.
 type RunResult struct {
-	Project   *model.Project    `json:"-"`
-	ProjectID string            `json:"projectId"`
-	Target    model.Artifact    `json:"target"`
-	Generated model.Artifact    `json:"generated"`
-	Provider  string            `json:"provider"`
-	Model     string            `json:"model"`
-	Preset    string            `json:"preset,omitempty"`
-	Usage     provider.Usage    `json:"usage,omitempty"`
-	Duration  time.Duration     `json:"durationMs"`
-	Params    provider.Params   `json:"params"`
-	Raw       map[string]string `json:"raw,omitempty"`
+	Project   *model.Project `json:"-"`
+	ProjectID string         `json:"projectId"`
+	Target    model.Artifact `json:"target"`
+	Generated model.Artifact `json:"generated"`
+	Provider  string         `json:"provider"`
+	Model     string         `json:"model"`
+	Preset    string         `json:"preset,omitempty"`
+	Usage     provider.Usage `json:"usage,omitempty"`
+	// Duration is not serialized directly: a time.Duration marshals as
+	// nanoseconds, so DurationMs carries the value the field name promises.
+	Duration   time.Duration     `json:"-"`
+	DurationMs int64             `json:"durationMs"`
+	Params     provider.Params   `json:"params"`
+	Raw        map[string]string `json:"raw,omitempty"`
 }
 
 // RunPrompt resolves the project and artifact, assembles the request, calls the
@@ -163,26 +166,32 @@ func (o *Orchestrator) RunPrompt(ctx context.Context, request RunRequest) (RunRe
 		spec.Metadata["finishReason"] = response.FinishReason
 	}
 
-	generated, err := project.DeriveArtifact(target.ID, spec)
+	// Persist in one serialized read-modify-write cycle rather than saving the
+	// copy loaded before generation, so a concurrent run cannot be lost.
+	var generated model.Artifact
+	stored, err := o.store.Update(request.ProjectRef, func(current *model.Project) error {
+		derived, err := current.DeriveArtifact(target.ID, spec)
+		generated = derived
+		return err
+	})
 	if err != nil {
 		return RunResult{}, fmt.Errorf("store prompt result: %w", err)
 	}
-	if err := o.store.Save(project); err != nil {
-		return RunResult{}, fmt.Errorf("save project %q: %w", project.Name, err)
-	}
+	project = stored
 
 	return RunResult{
-		Project:   project,
-		ProjectID: project.ID,
-		Target:    target,
-		Generated: generated,
-		Provider:  generator.Name(),
-		Model:     firstNonEmpty(response.Model, selector.Model),
-		Preset:    selector.Preset,
-		Usage:     response.Usage,
-		Duration:  duration,
-		Params:    params,
-		Raw:       response.Raw,
+		Project:    project,
+		ProjectID:  project.ID,
+		Target:     target,
+		Generated:  generated,
+		Provider:   generator.Name(),
+		Model:      firstNonEmpty(response.Model, selector.Model),
+		Preset:     selector.Preset,
+		Usage:      response.Usage,
+		Duration:   duration,
+		DurationMs: duration.Milliseconds(),
+		Params:     params,
+		Raw:        response.Raw,
 	}, nil
 }
 
