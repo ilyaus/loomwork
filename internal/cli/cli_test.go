@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ilyaus/loomwork/internal/model"
+	"github.com/ilyaus/loomwork/internal/provider"
 	"github.com/ilyaus/loomwork/internal/store"
 )
 
@@ -273,8 +274,15 @@ func TestProvidersCommand(t *testing.T) {
 	if byName["ollama"] != "configured" {
 		t.Errorf("ollama status = %q, want configured", byName["ollama"])
 	}
-	if !strings.Contains(byName["azure"], "scaffold") {
-		t.Errorf("azure status = %q, want it reported as a scaffold", byName["azure"])
+	if !strings.Contains(byName["azure"], "unavailable") || !strings.Contains(byName["azure"], provider.EnvAzureAPIKey) {
+		t.Errorf("azure status = %q, want it reported as unavailable without a key in the environment", byName["azure"])
+	}
+	t.Setenv(provider.EnvAzureAPIKey, "test-key")
+	decodeJSON(t, exec(t, home, "providers", "--json"), &payload)
+	for _, view := range payload.Providers {
+		if view.Name == "azure" && view.Status != "configured" {
+			t.Errorf("azure status = %q, want configured once the key is in the environment", view.Status)
+		}
 	}
 	if len(payload.PresetGroups) != 1 || payload.PresetGroups[0] != "ollama/qwen3:8b" {
 		t.Errorf("preset groups = %v, want the configured entry", payload.PresetGroups)
