@@ -172,3 +172,22 @@ func TestListAndHistoryOfTestSuites(t *testing.T) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
+
+func TestTestSuiteReadPathsRejectATraversingSuiteID(t *testing.T) {
+	dirStore, project := seededStore(t)
+	if _, err := dirStore.SaveTestSuite(project.ID, suiteWithCases("lists items")); err != nil {
+		t.Fatalf("SaveTestSuite: %v", err)
+	}
+
+	for _, suiteID := range []string{"../../other", "suite/../..", "Suite Orders"} {
+		if _, err := dirStore.LoadTestSuite(project.ID, suiteID, 0); err == nil || errors.Is(err, ErrNotFound) {
+			t.Errorf("LoadTestSuite(%q) err = %v, want an id validation error", suiteID, err)
+		}
+		if _, err := dirStore.TestSuiteHistory(project.ID, suiteID); err == nil || errors.Is(err, ErrNotFound) {
+			t.Errorf("TestSuiteHistory(%q) err = %v, want an id validation error", suiteID, err)
+		}
+		if _, err := dirStore.TestSuitePointer(project.ID, suiteID); err == nil {
+			t.Errorf("TestSuitePointer(%q) should reject the id", suiteID)
+		}
+	}
+}

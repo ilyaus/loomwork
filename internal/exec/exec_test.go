@@ -110,3 +110,18 @@ func TestCappedBufferDropsOverflow(t *testing.T) {
 		t.Fatalf("buffer = %q, want %q", buffer.buf.String(), "1234")
 	}
 }
+
+func TestCappedBufferIsSafeForAConcurrentReader(t *testing.T) {
+	buffer := &cappedBuffer{max: maxCapturedBytes}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 2000; i++ {
+			_, _ = buffer.Write([]byte("stderr line\n"))
+		}
+	}()
+	for i := 0; i < 2000; i++ {
+		_ = buffer.String()
+	}
+	<-done
+}

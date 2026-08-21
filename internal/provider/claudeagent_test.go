@@ -20,6 +20,9 @@ func fakeBridge(t *testing.T, handler string) []string {
 import { createInterface } from "node:readline";
 const send = (event) => process.stdout.write(JSON.stringify(event) + "\n");
 const seen = [];
+// A turn-ending event must echo the id of the prompt it answers, as the real
+// bridge does, so the adapter can tell it apart from an abandoned turn's.
+const lastTurnID = () => seen.filter((request) => request.type === "prompt").pop().id;
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   if (!line.trim()) return;
@@ -133,7 +136,7 @@ func TestClaudeSessionRunsARegisteredToolAndReturnsItsResult(t *testing.T) {
     return;
   }
   if (request.type === "tool_result") {
-    send({ type: "turn_complete", id: "turn-1", text: "tool said: " + request.content + " error=" + !!request.is_error });
+    send({ type: "turn_complete", id: lastTurnID(), text: "tool said: " + request.content + " error=" + !!request.is_error });
     return;
   }
   if (request.type === "close") { rl.close(); process.exit(0); }
@@ -167,7 +170,7 @@ func TestClaudeSessionReportsAFailingToolToTheModelInsteadOfDying(t *testing.T) 
   if (request.type === "start_session") { send({ type: "ready", session_id: "s" }); return; }
   if (request.type === "prompt") { send({ type: "tool_call", id: "call-1", name: request.prompt, input: {} }); return; }
   if (request.type === "tool_result") {
-    send({ type: "turn_complete", id: "turn-1", text: request.content, stop_reason: request.is_error ? "tool_error" : "end_turn" });
+    send({ type: "turn_complete", id: lastTurnID(), text: request.content, stop_reason: request.is_error ? "tool_error" : "end_turn" });
     return;
   }
   if (request.type === "close") { rl.close(); process.exit(0); }
@@ -298,5 +301,40 @@ func TestNormalizeToolSchemaAlwaysDescribesAnObject(t *testing.T) {
 	got := normalizeToolSchema(map[string]any{"properties": map[string]any{"path": map[string]any{"type": "string"}}})
 	if got["type"] != "object" || got["properties"] == nil {
 		t.Errorf("schema = %v", got)
+	}
+}
+
+func TestClaudeSessionIgnoresAnAbandonedTurnsResult(t *testing.T) {
+	// The first turn is never answered, so its Send gives up on its context.
+	// The bridge then answers it late, just before answering the second turn.
+	handler := `
+  if (request.type === "start_session") {
+    send({ type: "ready", session_id: "session-1" });
+    return;
+  }
+  if (request.type === "prompt" && request.prompt.startsWith("first")) {
+    return;
+  }
+  if (request.type === "prompt") {
+    send({ type: "turn_complete", id: "turn-1", text: "late answer to the abandoned turn" });
+    send({ type: "turn_complete", id: request.id, text: "answer to " + request.prompt });
+    return;
+  }
+  if (request.type === "close") { rl.close(); process.exit(0); }
+`
+	session := startFakeSession(t, handler, AgentSessionSpec{Model: "claude-sonnet-4-5"})
+
+	abandoned, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, err := session.Send(abandoned, PromptRequest{Prompt: "first"}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Send(first) err = %v, want DeadlineExceeded", err)
+	}
+
+	result, err := session.Send(context.Background(), PromptRequest{Prompt: "second"})
+	if err != nil {
+		t.Fatalf("Send(second): %v", err)
+	}
+	if result.Text != "answer to second" {
+		t.Errorf("Text = %q, want the second turn's own answer", result.Text)
 	}
 }

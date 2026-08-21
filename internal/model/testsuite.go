@@ -298,13 +298,25 @@ func ParseTestSuiteModelOutput(text, suiteID string) (*TestSuite, error) {
 	return &suite, nil
 }
 
+// NormalizeSuiteID lowercases and validates a suite id. Read paths that build a
+// filesystem path from a caller's id go through it, so identity is as strict on
+// the way out of the store as Normalize makes it on the way in.
+func NormalizeSuiteID(raw string) (string, error) {
+	id := strings.TrimSpace(strings.ToLower(raw))
+	if !suiteIDPattern.MatchString(id) {
+		return "", fmt.Errorf("test suite id %q must be lowercase letters, digits, and dashes", id)
+	}
+	return id, nil
+}
+
 // Normalize validates the suite and its cases in place and assigns ids to cases
 // that arrived without one, keeping the tc-NNN sequence dense and unique.
 func (s *TestSuite) Normalize() error {
-	s.SuiteID = strings.TrimSpace(strings.ToLower(s.SuiteID))
-	if !suiteIDPattern.MatchString(s.SuiteID) {
-		return fmt.Errorf("test suite id %q must be lowercase letters, digits, and dashes", s.SuiteID)
+	suiteID, err := NormalizeSuiteID(s.SuiteID)
+	if err != nil {
+		return err
 	}
+	s.SuiteID = suiteID
 	if s.Origin == "" {
 		s.Origin = TestSuiteOriginGenerated
 	}

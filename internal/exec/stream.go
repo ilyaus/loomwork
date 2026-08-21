@@ -129,7 +129,7 @@ func (p *Process) ReadLine() (string, error) {
 // StderrTail returns what the process has written to stderr so far, trimmed to
 // the last 2000 bytes so it can be embedded in an error message.
 func (p *Process) StderrTail() string {
-	text := strings.TrimSpace(p.stderr.buf.String())
+	text := strings.TrimSpace(p.stderr.String())
 	if len(text) > 2000 {
 		return "..." + text[len(text)-2000:]
 	}

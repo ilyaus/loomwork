@@ -13,6 +13,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -50,13 +51,17 @@ type Result struct {
 	TimedOut bool          `json:"timedOut,omitempty"`
 }
 
-// cappedBuffer keeps at most max bytes and silently drops the rest.
+// cappedBuffer keeps at most max bytes and silently drops the rest. It is safe
+// for a reader to call String while os/exec's copier goroutine writes.
 type cappedBuffer struct {
+	mu  sync.Mutex
 	buf bytes.Buffer
 	max int
 }
 
 func (c *cappedBuffer) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	remaining := c.max - c.buf.Len()
 	if remaining > 0 {
 		if len(p) > remaining {
@@ -66,6 +71,12 @@ func (c *cappedBuffer) Write(p []byte) (int, error) {
 		}
 	}
 	return len(p), nil
+}
+
+func (c *cappedBuffer) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.String()
 }
 
 // Run executes the command and waits for it. A non-zero exit is not an error:
@@ -98,8 +109,8 @@ func Run(ctx context.Context, command Command) (Result, error) {
 	started := time.Now()
 	err := cmd.Run()
 	result := Result{
-		Stdout:   stdout.buf.String(),
-		Stderr:   stderr.buf.String(),
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
 		Duration: time.Since(started),
 	}
 

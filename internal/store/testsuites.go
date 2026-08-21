@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/ilyaus/loomwork/internal/model"
@@ -81,7 +80,10 @@ func (d *DirStore) SaveTestSuite(projectRef string, suite *model.TestSuite) (*mo
 	if err := d.ensureLayoutLocked(project.ID); err != nil {
 		return nil, err
 	}
-	suiteDir := d.testSuiteDir(project.ID, suite.SuiteID)
+	suiteDir, err := d.testSuiteDir(project.ID, suite.SuiteID)
+	if err != nil {
+		return nil, err
+	}
 	pointer, err := readTestSuitePointer(suiteDir, suite.SuiteID)
 	if err != nil {
 		return nil, err
@@ -142,7 +144,10 @@ func (d *DirStore) LoadTestSuite(projectRef, suiteID string, version int) (*mode
 	if err != nil {
 		return nil, err
 	}
-	suiteDir := d.testSuiteDir(project.ID, suiteID)
+	suiteDir, err := d.testSuiteDir(project.ID, suiteID)
+	if err != nil {
+		return nil, err
+	}
 	pointer, err := readTestSuitePointer(suiteDir, suiteID)
 	if err != nil {
 		return nil, err
@@ -205,7 +210,10 @@ func (d *DirStore) TestSuiteHistory(projectRef, suiteID string) ([]*model.TestSu
 	if err != nil {
 		return nil, err
 	}
-	suiteDir := d.testSuiteDir(project.ID, suiteID)
+	suiteDir, err := d.testSuiteDir(project.ID, suiteID)
+	if err != nil {
+		return nil, err
+	}
 	pointer, err := readTestSuitePointer(suiteDir, suiteID)
 	if err != nil {
 		return nil, err
@@ -235,11 +243,21 @@ func (d *DirStore) TestSuitePointer(projectRef, suiteID string) (TestSuitePointe
 	if err != nil {
 		return TestSuitePointer{}, err
 	}
-	return readTestSuitePointer(d.testSuiteDir(project.ID, suiteID), suiteID)
+	suiteDir, err := d.testSuiteDir(project.ID, suiteID)
+	if err != nil {
+		return TestSuitePointer{}, err
+	}
+	return readTestSuitePointer(suiteDir, suiteID)
 }
 
-func (d *DirStore) testSuiteDir(projectID, suiteID string) string {
-	return filepath.Join(d.ProjectDir(projectID), TestSuitesDirName, strings.ToLower(strings.TrimSpace(suiteID)))
+// testSuiteDir validates the id before it becomes a path component, so a caller
+// cannot walk out of the suites directory with something like "../../other".
+func (d *DirStore) testSuiteDir(projectID, suiteID string) (string, error) {
+	id, err := model.NormalizeSuiteID(suiteID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(d.ProjectDir(projectID), TestSuitesDirName, id), nil
 }
 
 func readTestSuite(suiteDir, suiteID string, version int, withCases bool) (*model.TestSuite, error) {
