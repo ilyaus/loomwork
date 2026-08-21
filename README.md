@@ -23,9 +23,9 @@ execution contract, and the browser UI are phases 2–5.
   *or* a local reference, tags, per-name versioning, pinning, parent lineage, and
   free-form metadata. Prompt runs never mutate an artifact; they derive a new one.
 - **One provider interface, many backends** — `provider.TextGenerator` with
-  fully implemented **Ollama** (native API) and **LM Studio** (OpenAI-compatible)
-  adapters, plus **Azure AI Foundry** and **AWS Bedrock** scaffolds behind the same
-  interface and config wiring. A separate `provider.ImageGenerator` interface has an
+  implemented **Ollama** (native API), **LM Studio** (OpenAI-compatible),
+  **Azure AI Foundry** (deployment chat API), and **AWS Bedrock** (`Converse`,
+  signed by the AWS SDK) adapters. A separate `provider.ImageGenerator` interface has an
   adapter for the local `im-gen` service (submit → poll → collect).
 - **Per-model presets** — tunable parameters live in data, keyed by
   `provider` + `model`, with wildcard provider defaults, named presets, load-time
@@ -271,7 +271,7 @@ These are specified in `docs/INTENT.md` and have named extension points, but are
   invoking the runner's Lambda handler remotely is not.
 - **Creative playground** — preset sweeps plus image generation wired into the CLI
   through the existing `im-gen` adapter.
-- **Azure AI Foundry and Bedrock adapters** — constructors, config, and credential
-  handling exist; `Generate` returns `provider.ErrNotImplemented`.
+- **Azure Entra ID credentials** — the Azure adapter authenticates with an API key;
+  bearer-token (Entra ID) credentials are not wired up.
 
 [`docs/ROADMAP.md`](docs/ROADMAP.md) sequences these with scope and acceptance criteria.

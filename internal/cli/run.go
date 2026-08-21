@@ -157,9 +157,7 @@ func providersList(e *env, args []string) error {
 		switch declared.Kind {
 		case provider.KindAzure, provider.KindBedrock:
 			if _, err := provider.BuildTextGenerator(declared); err != nil {
-				status = "scaffold: " + err.Error()
-			} else {
-				status = "scaffold: generation not implemented yet"
+				status = "unavailable: " + err.Error()
 			}
 		}
 		views = append(views, providerView{

@@ -133,14 +133,20 @@ foundation beyond the extension points named in [`INTENT.md`](INTENT.md).
 * Non-2xx responses must produce an error containing the status code and a
   truncated response body.
 
-### FR-007: Remote Provider Scaffolds **[FOUNDATION — scaffold only]**
-* **Azure AI Foundry** and **AWS Bedrock** adapters must exist, implement
-  `provider.TextGenerator`, and be constructible from configuration
-  (endpoint/deployment/API version/region/model id, credentials from environment).
-* Until completed they must return a typed `ErrNotImplemented`-wrapped error from
-  `Generate`, so callers can detect the condition without string matching.
-* Construction must still validate configuration and surface missing credentials,
-  so wiring can be verified before request mapping exists.
+### FR-007: Remote Provider Adapters **[FOUNDATION]**
+* **Azure AI Foundry** — talk to the deployment-scoped OpenAI-compatible API:
+  `POST {endpoint}/openai/deployments/{deployment}/chat/completions?api-version=...`
+  and `GET {endpoint}/openai/models?api-version=...`, with the key sent in the
+  `api-key` header. Entra ID (bearer token) credentials remain deferred.
+* **AWS Bedrock** — talk to the `Converse` API so one body shape covers every model
+  family, and `ListFoundationModels` for discovery. SigV4 signing and invocation
+  are delegated to the AWS SDK for Go v2 (permitted by NFR-004) rather than
+  hand-rolled.
+* Construction must validate configuration and surface missing credentials, so
+  wiring can be verified without contacting a backend.
+* `provider.ErrNotImplemented` remains the typed sentinel for any future adapter
+  landing behind the interface before its mapping exists, so callers can detect
+  the condition without string matching.
 
 ### FR-008: Image Generation Provider **[FOUNDATION]**
 * A separate `provider.ImageGenerator` interface defines image generation
