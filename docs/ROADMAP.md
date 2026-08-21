@@ -12,22 +12,23 @@ browser UI, and any agent or executor integration. They live in
 
 | Phase | Scope | Core schema | Status |
 |---|---|---|---|
-| 1 | Project directory management, document links, requirement CRUD + versioning | [`requirement.schema.json`](schemas/requirement.schema.json) | **done (CLI)** |
+| 1 | Project directory management, document links, requirement CRUD + versioning | [`requirement.schema.json`](schemas/requirement.schema.json) | **done (CLI + browser UI)** |
 | 2 | LLM document analysis: gap/question lists, requirement extraction | `document-analysis.schema.json` | next |
 | 3 | Agent definitions, override rules, one agent SDK integration, test generation | `agent-definition.schema.json`, `test-case.schema.json` | planned |
 | 4 | Execution contract (local + remote executor), JSON report ingestion, HTML rendering | `execution-report.schema.json`, `executor-config.schema.json` | planned |
 | 5 | Run comparison (pass/fail, latency, structural body delta) and testability dashboard | — (derived views) | planned |
 
 The **browser UI** is the intended primary surface and is built incrementally on
-top of these phases. The earlier `serve`/`initial_ui` HTTP+UI attempt has been
-**discarded and removed from the repository**; the UI will be rebuilt fresh over
-the typed domain entities rather than continued. The CLI remains the reference
-surface, and `internal/orchestrator` stays transport agnostic so the rebuild is a
-handler layer over unchanged domain code.
+top of these phases. The earlier `serve`/`initial_ui` HTTP+UI attempt was
+**discarded and removed from the repository**; the UI was rebuilt fresh over the
+typed domain entities rather than continued. `internal/httpapi` is a handler
+layer over the unchanged `store.DirStore`, its assets are embedded from `web/`,
+and `loomwork serve` binds the loopback interface only. The CLI remains the
+reference surface, and `internal/orchestrator` stays transport agnostic.
 
 ---
 
-## Phase 1 — project shell and requirements (no LLM calls) — *done for the CLI*
+## Phase 1 — project shell and requirements (no LLM calls) — *done*
 
 **Deliverable.** A working project shell: projects as directories, document
 source links, and typed requirement CRUD with versioning.
@@ -74,9 +75,14 @@ loomwork requirement update     --project REF --requirement ID [--text TEXT | --
 loomwork requirement set-status --project REF --requirement ID --status STATUS [--version N]
 ```
 
-**Remaining in this phase.** Directory-of-projects and requirement views in the
-browser UI, and reading a project by pointing at an existing directory outside
-the workspace root.
+**Browser UI.** `loomwork serve` (`internal/httpapi` + embedded `web/` assets)
+serves the directory-of-projects landing view, a project view with its document
+sources, and requirement management with version history over the same JSON
+requirement schema. Testability figures (last-tested date, coverage, open gaps)
+are placeholders until phases 4-5.
+
+**Remaining in this phase.** Reading a project by pointing at an existing
+directory outside the workspace root.
 
 ## Phase 2 — LLM-driven document analysis
 
