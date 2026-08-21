@@ -13,6 +13,10 @@ presets.json
 .env.*
 *.pem
 
+# agent bridge dependencies (installed with `cd bridge && npm install`)
+/bridge/node_modules/
+/bridge/package-lock.json
+
 # tooling noise
 *.test
 *.out
