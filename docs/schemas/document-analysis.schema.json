@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ilyaus/loomwork/docs/schemas/document-analysis.schema.json",
+  "title": "DocumentAnalysis",
+  "description": "The result of analyzing a project's document sources for QA readiness: a readiness verdict, whether the requirements and the API spec agree, the gaps blocking test work, and the open questions needing QA/engineering follow-up. The same document is produced by an LLM provider run and by a QA engineer working outside Loomwork (the manual-import path), so it is deliberately the provider's required output format: only the fields a reviewer must always see are required, and provenance lives in metadata rather than in dedicated fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "gaps", "open_questions"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "description": "ready: the service is sufficiently defined for functional/integration testing. ready-with-gaps: testing can start, but the listed gaps limit coverage. not-ready: the documentation cannot support meaningful test work yet.",
+      "enum": ["ready", "ready-with-gaps", "not-ready"]
+    },
+    "spec_in_sync": {
+      "type": "boolean",
+      "description": "Whether the requirements and the API spec agree with each other. Absent when the sources include no API spec, or when the analysis could not determine it."
+    },
+    "summary": {
+      "type": "string",
+      "description": "A short tester-facing justification of the verdict.",
+      "minLength": 1
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Things the documentation is missing or contradicts itself on, each blocking or limiting test coverage. Empty when nothing blocks testing.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "open_questions": {
+      "type": "array",
+      "description": "Questions requiring QA/engineering follow-up before the affected behavior can be tested with confidence. Empty when there are none.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "extracted_requirements": {
+      "type": "array",
+      "description": "Requirement candidates found in the sources, in tester-friendly language. Each is written to the phase-1 requirement store per requirement.schema.json with origin: extracted, so the fields here mirror that schema's authoring fields.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The requirement in tester-friendly language.",
+            "minLength": 1
+          },
+          "source_type": {
+            "type": "string",
+            "description": "System of record for the document the requirement came from.",
+            "enum": ["ado", "confluence", "github", "other"]
+          },
+          "source_ref": {
+            "type": "string",
+            "description": "Back-reference into the source system: ADO story id or URL, Confluence page URL, GitHub document URL.",
+            "minLength": 1
+          },
+          "tags": {
+            "type": "array",
+            "description": "Free-form labels, deduplicated and sorted.",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          }
+        },
+        "dependentRequired": {
+          "source_ref": ["source_type"]
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "Names of the project document sources the analysis covered.",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Provenance (provider, model, preset, prompt digest, or the file a manual analysis was imported from) or any other non-semantic annotation.",
+      "additionalProperties": { "type": "string" }
+    },
+    "created_at": {
+      "type": "string",
+      "description": "When the analysis was produced (UTC, RFC 3339). Loomwork sets it when storing an analysis whose author did not.",
+      "format": "date-time"
+    }
+  }
+}
