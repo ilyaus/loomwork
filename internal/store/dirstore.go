@@ -383,11 +383,11 @@ func (d *DirStore) UpdateRequirement(projectRef, requirementID string, spec mode
 		if err != nil {
 			return err
 		}
-		current.Status = model.RequirementStatusSuperseded
-		if err := writeRequirement(dir, current); err != nil {
+		if err := writeRequirement(dir, next); err != nil {
 			return err
 		}
-		if err := writeRequirement(dir, next); err != nil {
+		current.Status = model.RequirementStatusSuperseded
+		if err := writeRequirement(dir, current); err != nil {
 			return err
 		}
 		entry.CurrentVersion = next.Version
