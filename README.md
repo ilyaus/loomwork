@@ -1,19 +1,20 @@
 # Loomwork
 
-A pure-Go orchestrator for running prompts over project artifacts with local and
-remote models. You create a **project**, add **artifacts** to it (specs, logs, test
-results, diagrams, docs), and run prompts against those artifacts through a
-pluggable **model provider** — the result is stored back as a new, versioned
-artifact with full lineage and provenance.
+A single-user, local-first **QA workbench** that organizes documentation sources,
+requirements, agent-generated test suites, and execution reports — without
+executing the tests itself. A **project** is a directory on disk holding typed,
+versioned QA entities plus free-form **artifacts** (specs, logs, test results,
+docs); prompts run against those artifacts through a pluggable **model provider**
+and the result is stored back as a new versioned artifact with full lineage.
 
-This repository currently contains the **foundation**: the domain model, the
-provider abstraction, the per-model preset registry, a `cue-note` client, file-backed
-persistence, and a CLI vertical slice that works end to end against a local model.
-The larger product vision (wiki generation, testing workbench over
-[`ilyaus/api-test-runner`](https://github.com/ilyaus/api-test-runner), the
-`sdd-qa` generate→run→analyze→refine loop, creative playground, image generation via
-`ilyaus/im-gen`) is specified in [`docs/INTENT.md`](docs/INTENT.md) with each part
-marked implemented or deferred.
+[`docs/loom-work-vision.md`](docs/loom-work-vision.md) is the authoritative
+product spec and [`docs/ROADMAP.md`](docs/ROADMAP.md) sequences its five phases.
+What exists today: the project directory store, document source links, typed
+versioned **requirements** (phase 1), plus the foundation the later phases build
+on — the provider abstraction, the per-model preset registry, a `cue-note`
+client, and a CLI vertical slice that works end to end against a local model.
+LLM document analysis, agent definitions and override rules, test generation, the
+execution contract, and the browser UI are phases 2–5.
 
 ## Features
 
@@ -34,8 +35,13 @@ marked implemented or deferred.
 - **cue-note client** — an interface with an HTTP implementation (contract in
   [`docs/cue-note-contract.md`](docs/cue-note-contract.md)) and an in-memory stub, so
   work here is not blocked on that service shipping.
-- **Pure Go, zero CGO, standard library only** — no third-party dependencies; one
-  static binary.
+- **Typed QA entities, not stringly-typed blobs** — `model.Requirement` carries
+  its own id, versions, status, origin, and source back-reference; agent
+  definitions, test suites, and reports follow in later phases.
+- **Directory-per-project storage** — `project.json` plus a subfolder per entity
+  family, atomic writes, and a cross-process lock. No database.
+- **One static binary** — `CGO_ENABLED=0`; third-party Go modules are allowed
+  where they earn their place.
 
 ## Build
 
@@ -67,8 +73,36 @@ duration: 2.4s     tokens: 120 prompt / 24 completion
 
 Every command accepts `--home PATH` (workspace override) and `--json`
 (machine-readable output). `loomwork --help` lists the full command set:
-`project create|list|show`, `artifact add|list|show|pin|unpin`, `cue list|show`,
-`run`, `workbench run`, and `providers`.
+`project create|list|show|source`,
+`requirement create|list|show|update|set-status`,
+`artifact add|list|show|pin|unpin`, `cue list|show`, `run`, `workbench run`, and
+`providers`.
+
+### Document sources and requirements
+
+A project links to the documentation it is tested against, and requirements are a
+first-class versioned entity rather than a document:
+
+```bash
+loomwork project create --name checkout \
+    --source "name=spec,type=confluence,url=https://wiki/checkout,local=./checkout.pdf"
+loomwork project source --project checkout \
+    --source "name=stories,type=ado,url=https://dev.azure.com/org/proj"
+
+loomwork requirement create --project checkout --text "Cart totals include tax" \
+    --source-type ado --source-ref AB#1234 --tags cart
+loomwork requirement update --project checkout --requirement req-001 \
+    --text "Cart totals include tax and shipping"
+loomwork requirement show --project checkout --requirement req-001 --history
+loomwork requirement set-status --project checkout --requirement req-001 --status obsolete
+```
+
+An update writes the next version and marks the previous one `superseded`; every
+version stays a discrete retrievable snapshot and obsolete requirements are
+retained for audit rather than deleted. The wire format is fixed by
+[`docs/schemas/requirement.schema.json`](docs/schemas/requirement.schema.json),
+so QA-authored and (later) LLM-extracted requirements share one schema and one
+store.
 
 ### Reusable prompts (cues)
 
@@ -119,19 +153,11 @@ Artifact bodies come from exactly one of `--content TEXT` (inline),
 read at run time). Adding an artifact under an existing name creates the next
 revision rather than overwriting.
 
-### Web UI
+### Browser UI
 
-`loomwork serve` starts an HTTP server exposing a JSON API (`/api/projects`,
-`/api/cues`, `/api/workspace`, `/api/run`) and an embedded single-page workbench
-UI over the same workspace the CLI uses:
-
-```bash
-loomwork serve --addr 127.0.0.1:8790
-```
-
-The UI covers project/artifact browsing with lineage and pinning, cue-note
-templates, provider/preset status with live reachability probing, and running
-prompts (inline or via cue) that produce new versioned artifacts.
+Deferred. An earlier `loomwork serve` HTTP+UI attempt was discarded and removed;
+the browser UI will be rebuilt over the typed domain entities. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Workspace layout
 
@@ -141,8 +167,19 @@ prompts (inline or via cue) that produce new versioned artifacts.
 ~/.loomwork/
   config.json          providers, cue-note endpoint, system prompt   (optional)
   presets.json         per-provider/model parameter presets          (optional)
-  projects/<id>.json   one document per project, written atomically
+  projects/<project-id>/
+    project.json       metadata, document source links, index cache
+    requirements/      req-001.v1.json, req-001.v2.json, index.json
+    agent-definitions/ (phase 3)
+    test-suites/       (phase 3)
+    executor-config/   (phase 4)
+    reports/           (phase 4)
 ```
+
+Every file is written atomically (temp file + rename) and read-modify-write
+cycles hold a directory lock, so concurrent CLI invocations cannot lose each
+other's changes. Projects stored by the earlier flat `projects/<id>.json` layout
+are still read and migrate to a directory on first write.
 
 Both JSON files are optional — with no configuration at all, Loomwork targets
 Ollama on `http://localhost:11434` and LM Studio on `http://localhost:1234/v1`.

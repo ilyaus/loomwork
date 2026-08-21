@@ -18,12 +18,12 @@ const (
 	lockStaleAfter = 2 * time.Minute
 )
 
-// lock serializes read-modify-write cycles across processes, since every CLI
+// lockDir serializes read-modify-write cycles across processes, since every CLI
 // invocation is its own process and an in-process mutex cannot protect them.
 // The lock is a directory-wide advisory lock file created with O_EXCL; a stale
 // file from a killed process is broken once it is older than lockStaleAfter.
-func (f *FileStore) lock() (func(), error) {
-	path := filepath.Join(f.dir, lockFileName)
+func lockDir(dir string) (func(), error) {
+	path := filepath.Join(dir, lockFileName)
 	deadline := time.Now().Add(lockWaitTimeout)
 	for {
 		handle, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)

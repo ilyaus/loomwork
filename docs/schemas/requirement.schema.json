@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ilyaus/loomwork/docs/schemas/requirement.schema.json",
+  "title": "Requirement",
+  "description": "One immutable version snapshot of a tester-facing requirement, stored as requirements/<id>.v<version>.json inside a project directory. Field names follow the entity table in docs/loom-work-vision.md, so the same document is the contract between the store, the browser UI, and any agent that extracts requirements from source documentation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "text", "status", "origin", "created_at"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Requirement identity, stable across versions.",
+      "pattern": "^req-[0-9]{3,}$"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Version of this snapshot, starting at 1. Every version is retained and retrievable; there is no diff view.",
+      "minimum": 1
+    },
+    "text": {
+      "type": "string",
+      "description": "The requirement in tester-friendly language.",
+      "minLength": 1
+    },
+    "source_type": {
+      "type": "string",
+      "description": "System of record for the originating documentation. Absent for requirements a QA engineer authored without a source document.",
+      "enum": ["ado", "confluence", "github", "other"]
+    },
+    "source_ref": {
+      "type": "string",
+      "description": "Back-reference into the source system: ADO story id or URL, Confluence page URL, GitHub document URL.",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "description": "active: current and testable. obsolete: retained for audit, no longer testable. superseded: a newer version of the same requirement id exists.",
+      "enum": ["active", "obsolete", "superseded"]
+    },
+    "origin": {
+      "type": "string",
+      "description": "How the version was produced. Both paths write the same schema to the same store.",
+      "enum": ["authored", "extracted"]
+    },
+    "tags": {
+      "type": "array",
+      "description": "Free-form labels, deduplicated and sorted.",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Provenance for extracted requirements (provider, model, source document, prompt digest) or any other non-semantic annotation.",
+      "additionalProperties": { "type": "string" }
+    },
+    "created_at": {
+      "type": "string",
+      "description": "When this version was written (UTC, RFC 3339).",
+      "format": "date-time"
+    }
+  },
+  "dependentRequired": {
+    "source_ref": ["source_type"]
+  },
+  "$defs": {
+    "index": {
+      "title": "RequirementIndex",
+      "description": "requirements/index.json: the current-version pointer per requirement id, so loading a project does not require reading every version file.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirements", "updated_at"],
+      "properties": {
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "current_version", "versions", "status", "updated_at"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^req-[0-9]{3,}$" },
+              "current_version": { "type": "integer", "minimum": 1 },
+              "versions": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "status": { "type": "string", "enum": ["active", "obsolete", "superseded"] },
+              "updated_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

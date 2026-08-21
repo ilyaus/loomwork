@@ -1,19 +1,83 @@
 # Product and Functional Requirements
 
+The authoritative product spec is [`loom-work-vision.md`](loom-work-vision.md);
+this document decomposes it into testable requirements and must be corrected
+whenever the two disagree.
+
 Scope note: requirements marked **[FOUNDATION]** are in scope for the current
-implementation. Requirements marked **[DEFERRED]** are recorded for later sessions
-and must not constrain the foundation beyond the extension points named in
-[`INTENT.md`](INTENT.md).
+implementation. **[PHASE n]** marks a requirement belonging to that phase of the
+vision's build plan (see [`ROADMAP.md`](ROADMAP.md)). Requirements marked
+**[DEFERRED]** are recorded for later sessions and must not constrain the
+foundation beyond the extension points named in [`INTENT.md`](INTENT.md).
 
 ## 1. Functional Requirements
 
 ### FR-001: Project Lifecycle **[FOUNDATION]**
 * A project has a stable id, a name, optional description, tags, creation and
-  update timestamps, and a set of artifacts.
+  update timestamps, document source links, and a set of artifacts.
 * Project names must be unique within a workspace; creating a duplicate name must
   fail with a diagnostic naming the conflicting project id.
 * A project must be serializable to and from JSON without loss, so any store
   (file, object storage, database) can persist it.
+
+### FR-001a: Project Directory Layout **[PHASE 1]**
+* A project is persisted as a directory `<projects-root>/<project-id>/` holding
+  `project.json` plus the subfolders `requirements/`, `agent-definitions/`,
+  `test-suites/`, `executor-config/`, and `reports/`. All subfolders exist from
+  project creation, before any entity is written into them.
+* `project.json` is the metadata document and index cache: name, description,
+  tags, document source links, timestamps, and derived counts (total and active
+  requirements) so a directory-of-projects view needs no full scan.
+* Writes must be atomic (temp file + rename) and read-modify-write cycles must be
+  serialized across processes by a directory lock, since every CLI invocation is
+  a separate process.
+* A project written by an earlier flat `<project-id>.json` layout must remain
+  readable and be migrated to a directory the first time it is written.
+
+### FR-001b: Document Source Links **[PHASE 1]**
+* A project records any number of named document sources, each with a source type
+  (`ado`, `confluence`, `github`, `other`), a URL, and optionally a local path or
+  an S3 URI for a stored copy of the document.
+* A source must carry at least one location (URL, local copy, or S3 copy);
+  unknown source types must be rejected.
+* Re-adding a source with an existing name updates it rather than duplicating it.
+
+### FR-001c: Requirement Entity **[PHASE 1]**
+* A requirement is a typed domain entity, not a generic artifact. Its fields are
+  id, version, tester-friendly text, optional `source_type` and `source_ref`
+  back-reference, status, origin, tags, metadata, and a creation timestamp. The
+  wire format is fixed by
+  [`schemas/requirement.schema.json`](schemas/requirement.schema.json).
+* Status is one of `active`, `obsolete`, or `superseded`. Obsolete requirements
+  are retained for audit, never deleted. `superseded` is assigned only by writing
+  a newer version — it cannot be set directly — and a superseded version's status
+  is then frozen, because the newer version carries the current text.
+* Origin is `authored` (entered by a QA engineer) or `extracted` (produced by
+  later LLM document analysis). Both paths write the same schema to the same
+  store.
+* A `source_ref` requires a `source_type`; empty text is rejected.
+
+### FR-001d: Requirement Versioning and Persistence **[PHASE 1]**
+* Each requirement version is a discrete retrievable snapshot stored as its own
+  file, `requirements/<requirement-id>.v<version>.json`. No diff view is
+  required.
+* An update writes the next version and marks the previous one `superseded`;
+  earlier versions remain byte-for-byte retrievable. Fields the update omits are
+  inherited from the previous version.
+* `requirements/index.json` records, per requirement id, the current-version
+  pointer, every retained version, and the current status.
+* Requirement ids follow a stable `req-NNN` sequence within a project.
+
+### FR-001e: Requirement CLI **[PHASE 1]**
+* `requirement create` accepts text inline or from a file plus optional source
+  type/reference, status, origin, and tags.
+* `requirement list` lists the current version of every requirement, optionally
+  filtered by status. `requirement show` returns the current version, a specific
+  version, or the full retained history.
+* `requirement update` creates the next version; `requirement set-status` changes
+  the status of the current or a specific version.
+* `project create --source` and `project source --source` manage document source
+  links.
 
 ### FR-002: Artifact Model **[FOUNDATION]**
 * An artifact has: id, project-scoped name, type, version, tags, pinned flag,
@@ -122,8 +186,10 @@ and must not constrain the foundation beyond the extension points named in
 * A failed run must not modify the project.
 
 ### FR-012: CLI Vertical Slice **[FOUNDATION]**
-* Commands: `project create|list|show`, `artifact add|list|show|pin|unpin`,
-  `run` (prompt run), `providers` (list configured providers/presets).
+* Commands: `project create|list|show|source`,
+  `requirement create|list|show|update|set-status`,
+  `artifact add|list|show|pin|unpin`, `run` (prompt run),
+  `workbench run`, `providers` (list configured providers/presets).
 * Every command must be scriptable: non-zero exit code on failure, diagnostics on
   stderr, and machine-readable JSON output available via a flag.
 * The workspace directory is configurable via flag or `LOOMWORK_HOME`, defaulting
@@ -132,7 +198,13 @@ and must not constrain the foundation beyond the extension points named in
 ### FR-013: Wiki Generation Flow **[DEFERRED]**
 ### FR-014: Testing Workbench over `api-test-runner` + `sdd-qa` loop **[DEFERRED]**
 ### FR-015: Creative Playground (sweeps, comparisons, promotion) **[DEFERRED]**
-### FR-016: HTTP server / multi-user surface **[DEFERRED]**
+### FR-016: LLM document analysis and requirement extraction **[PHASE 2 — DEFERRED]**
+### FR-017: Agent definitions, override rules, `AgentAdapter`, test generation **[PHASE 3 — DEFERRED]**
+### FR-018: Execution contract, report ingestion, HTML rendering **[PHASE 4 — DEFERRED]**
+### FR-019: Run comparison and testability dashboard **[PHASE 5 — DEFERRED]**
+### FR-020: Browser UI over a local backend API **[DEFERRED]**
+* The earlier `serve`/`initial_ui` HTTP+UI attempt was discarded and removed; the
+  UI will be rebuilt fresh over the typed domain entities.
 
 ## 2. Non-Functional Requirements
 
@@ -151,9 +223,12 @@ and must not constrain the foundation beyond the extension points named in
 * Stores, registries, and stub clients must be safe for concurrent use, protected
   by `sync.RWMutex` or immutability.
 
-### NFR-004: Pure Go, Zero CGO
-* `CGO_ENABLED=0` builds must produce a single static binary; no native
-  dependencies, and standard library first.
+### NFR-004: Single Static Binary
+* `CGO_ENABLED=0` builds must produce a single static binary with no native
+  dependencies.
+* Third-party Go modules are allowed where they clearly earn their place; the
+  earlier standard-library-only rule no longer applies. Prefer the standard
+  library when it is adequate, and keep each dependency justified.
 
 ### NFR-005: Test Coverage of Contracts
 * Domain rules, preset validation/resolution, provider request/response mapping

@@ -10,15 +10,26 @@ import (
 // nowFunc is indirected so tests can produce deterministic timestamps.
 var nowFunc = time.Now
 
-// Project is a named container of versioned artifacts.
+// Project is a named container of versioned artifacts, requirements, and the
+// documentation sources they were derived from.
 type Project struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	Tags        []string   `json:"tags,omitempty"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
-	Artifacts   []Artifact `json:"artifacts"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Tags        []string         `json:"tags,omitempty"`
+	Sources     []DocumentSource `json:"sources,omitempty"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	UpdatedAt   time.Time        `json:"updatedAt"`
+	Artifacts   []Artifact       `json:"artifacts"`
+	// Index caches counts derived from the project directory so a landing view
+	// can summarize many projects without scanning each one's subfolders.
+	Index *ProjectIndex `json:"index,omitempty"`
+}
+
+// ProjectIndex is the cached summary a store maintains in the project document.
+type ProjectIndex struct {
+	Requirements       int `json:"requirements"`
+	ActiveRequirements int `json:"activeRequirements"`
 }
 
 // NewProject creates an empty project.
@@ -36,6 +47,25 @@ func NewProject(name, description string, tags []string) (*Project, error) {
 		UpdatedAt:   now,
 		Artifacts:   []Artifact{},
 	}, nil
+}
+
+// AddSource attaches a document source link, replacing an existing source with
+// the same name so re-adding one updates it instead of duplicating it.
+func (p *Project) AddSource(source DocumentSource) (DocumentSource, error) {
+	normalized, err := source.normalize()
+	if err != nil {
+		return DocumentSource{}, err
+	}
+	for i := range p.Sources {
+		if strings.EqualFold(p.Sources[i].Name, normalized.Name) {
+			p.Sources[i] = normalized
+			p.touch()
+			return normalized, nil
+		}
+	}
+	p.Sources = append(p.Sources, normalized)
+	p.touch()
+	return normalized, nil
 }
 
 // AddArtifact appends a new artifact. If an artifact with the same name already
