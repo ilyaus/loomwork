@@ -13,7 +13,7 @@ browser UI, and any agent or executor integration. They live in
 | Phase | Scope | Core schema | Status |
 |---|---|---|---|
 | 1 | Project directory management, document links, requirement CRUD + versioning | [`requirement.schema.json`](schemas/requirement.schema.json) | **done (CLI)** |
-| 2 | LLM document analysis: gap/question lists, requirement extraction | `document-analysis.schema.json` | next |
+| 2 | LLM document analysis: gap/question lists, requirement extraction | [`document-analysis.schema.json`](schemas/document-analysis.schema.json) | **done (CLI)** |
 | 3 | Agent definitions, override rules, one agent SDK integration, test generation | `agent-definition.schema.json`, `test-case.schema.json` | planned |
 | 4 | Execution contract (local + remote executor), JSON report ingestion, HTML rendering | `execution-report.schema.json`, `executor-config.schema.json` | planned |
 | 5 | Run comparison (pass/fail, latency, structural body delta) and testability dashboard | — (derived views) | planned |
@@ -78,7 +78,7 @@ loomwork requirement set-status --project REF --requirement ID --status STATUS [
 browser UI, and reading a project by pointing at an existing directory outside
 the workspace root.
 
-## Phase 2 — LLM-driven document analysis
+## Phase 2 — LLM-driven document analysis — *done for the CLI*
 
 **Scope.** Analyze a project's document sources with a single provider first,
 producing a QA-readiness assessment plus a list of gaps and open questions, and
@@ -91,6 +91,21 @@ analysis outside Loomwork.
 
 **Extension points.** `provider.TextGenerator`, the preset registry, and
 `store.DirStore.CreateRequirement`. Draft `document-analysis.schema.json` first.
+
+**Done.** `internal/analysis` analyzes a project's document sources through any
+configured `provider.TextGenerator`, stores the analysis (fixed by
+[`document-analysis.schema.json`](schemas/document-analysis.schema.json)) as a
+versioned `doc` artifact, and writes extracted requirements through the phase-1
+store with `origin: extracted` and provider/model provenance in `metadata`.
+
+```text
+loomwork analysis run    --project REF --model provider/model[#preset] \
+                         [--system TEXT] [--name NAME] [--tags a,b] [--no-extract] \
+                         [--temperature N] [--top-p N] [--max-tokens N] [--seed N]
+loomwork analysis import --project REF --file PATH [--name NAME] [--tags a,b] [--no-extract]
+```
+
+**Remaining in this phase.** Analysis views in the browser UI.
 
 ## Phase 3 — agent definitions, override rules, and test generation
 

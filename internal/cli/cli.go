@@ -40,6 +40,10 @@ Commands:
   artifact show    --project REF --artifact REF
   artifact pin     --project REF --artifact ID
   artifact unpin   --project REF --artifact ID
+  analysis run     --project REF --model provider/model[#preset]
+                   [--system TEXT] [--name NAME] [--tags a,b] [--no-extract]
+                   [--temperature N] [--top-p N] [--max-tokens N] [--seed N]
+  analysis import  --project REF --file PATH [--name NAME] [--tags a,b] [--no-extract]
   cue list         [--tag a,b] [--search TEXT] [--limit N]
   cue show         --cue REF
   run              --project REF --artifact REF --model provider/model[#preset]
@@ -93,6 +97,11 @@ func Run(args []string, stdout, stderr io.Writer) error {
 			"show":  artifactShow,
 			"pin":   artifactPin,
 			"unpin": artifactUnpin,
+		})
+	case "analysis":
+		return runGroup(rest, stdout, stderr, map[string]commandFunc{
+			"run":    analysisRun,
+			"import": analysisImport,
 		})
 	case "cue":
 		return runGroup(rest, stdout, stderr, map[string]commandFunc{
