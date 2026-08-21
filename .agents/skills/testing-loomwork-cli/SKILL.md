@@ -1,59 +1,64 @@
 ---
 name: testing-loomwork-cli
-description: How to build, run, and end-to-end test the loomwork CLI (projects, document sources, versioned requirements, artifacts) without any server, network, or LLM provider.
+description: How to test the loomwork CLI end-to-end without cloud credentials or a local model server — isolated workspaces, provider credential status, and fake provider endpoints.
 ---
 
 # Testing the loomwork CLI
 
-## Build and run
-- `make build` produces `bin/loomwork` (CGO_ENABLED=0). Also available: `make fmt`, `make vet`, `make test`.
-- There is no HTTP server or web UI: the earlier `loomwork serve` / `internal/server` surface was removed.
-  Everything is exercised through the binary. `loomwork serve` should exit 1 with `unknown command "serve"`.
-- Point the workspace at a scratch dir per test run: `export LOOMWORK_HOME=/tmp/lw` (or pass `--home PATH`).
-  No credentials are needed for project/requirement/artifact flows; only `run`/`providers` touch providers,
-  and `run` must not be exercised against a real provider.
-- `--json` is a global flag on every command and is the best way to assert exact field values.
-- Every failure path prints `loomwork: <message>` on stderr and exits 1; success exits 0. `--help` exits 0.
-- Careful when piping CLI output through `head` in test harnesses: SIGPIPE makes the observed exit code 141
-  and hides the real code. Redirect to files instead.
-
-## Where state lives (assert on disk, not just stdout)
+## Build / static checks
 ```
-$LOOMWORK_HOME/projects/<project-id>/
-  project.json          # name, description, tags, sources[], index{requirements,activeRequirements}
-  requirements/
-    req-001.v1.json     # one immutable file per version
-    index.json          # per-id {id,current_version,versions[],status,updated_at}
-  agent-definitions/ test-suites/ executor-config/ reports/   # created empty at project create
+make build   # CGO_ENABLED=0 go build -o bin/loomwork ./cmd/loomwork
+make vet
+make test
+gofmt -l .   # must print nothing
+ldd bin/loomwork   # expect "not a dynamic executable" (static, CGO off)
 ```
-- A legacy flat `projects/<id>.json` is still readable and is migrated to a directory (and the flat file
-  deleted) on the first write, e.g. `project source --project <name> --source ...`.
-- Writes are atomic (temp file + rename) and guarded by `projects/.lock`, so concurrency tests should
-  launch several CLI processes in parallel and then assert `index.json` is valid JSON with unique ids and
-  contiguous `versions[]`.
+`file` is not installed on the box; use `ldd` for the static-binary check.
 
-## Useful assertions
-- Requirement JSON files should validate against `docs/schemas/requirement.schema.json`
-  (`pip install jsonschema`; the index document is `$defs.index` in the same file).
-- An update writes `req-NNN.v<N+1>.json` first and then rewrites the previous version once to set
-  `status: superseded`; after that, older version files must never change again (compare sha256/mtime).
-  When the write ordering in `DirStore.UpdateRequirement` changes, re-run the hash/mtime retention checks
-  rather than reusing earlier evidence.
-- `superseded` is not a directly settable status: `requirement create --status superseded` and
-  `requirement set-status --status superseded` must exit 1 with
-  `requirement status "superseded" is set only by creating a new version: choose active or obsolete`.
-  A distinct message covers a version that is *already* superseded:
-  `requirement <id> v<N> is superseded: its status is fixed because a newer version exists`.
-  Both messages should be reachable and must not be confused with one another.
-  Note `requirement list --status superseded` still parses (it filters current versions, so it is
-  normally empty), and `unknown requirement status` errors still list superseded as a valid value.
-- Not-found errors come from `store.ErrNotFound` (`store: not found`) and the caller names the entity,
-  e.g. `project "ghost": store: not found`, `requirement "req-999" in project Alpha: store: not found`,
-  `requirement req-001 v99: store: not found`. If a message names the wrong noun, that is a bug.
-- `--version 0`/omitted means the current version; negative `--version` is rejected up front by
-  `requirement show`/`set-status` with `--version must be 1 or greater`.
-- Artifact types are `spec, log, test-result, diagram, doc, generated` — `note` is NOT valid, so use
-  `--type spec` in artifact regression flows.
+## Isolated workspace
+Never touch `~/.loomwork`. Every command accepts `--home PATH`:
+```
+H=/tmp/lw-test; mkdir -p $H
+cp config/config.example.json $H/config.json
+bin/loomwork providers --home $H [--json]
+```
+`--json` is a global flag; `requirement list --json` returns a bare JSON array (not an object).
+
+## Provider credential status (`providers`)
+`internal/cli/run.go` builds azure/bedrock adapters just to compute status, so status is
+`configured` or `unavailable: <reason>`. Credentials are read from the environment only:
+- azure: `AZURE_AI_API_KEY` (or `azure.apiKeyEnv`)
+- bedrock: both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or `bedrock.profile`
+Use obviously-fake sentinel values (e.g. `SENTINEL-AZURE-KEY-1234`) so you can grep all output
+for the secret value to check the "never log credentials" requirement.
+
+## Exercising remote adapters without cloud access
+No live cloud creds are needed to prove the adapters work over the wire — point them at a small
+local Python `http.server` fake that logs the request and returns a canned response:
+- Azure: set `providers.azure.azure.endpoint` to `http://127.0.0.1:PORT`; expect
+  `POST /openai/deployments/<deployment>/chat/completions?api-version=<ver>` with an `api-key`
+  header and an OpenAI-shaped chat completion response.
+- Bedrock: set `providers.bedrock.baseUrl` to `http://127.0.0.1:PORT` (used as the SDK
+  `BaseEndpoint`); expect `POST /model/<modelId>/converse` with an `Authorization: AWS4-HMAC-SHA256`
+  header. Dummy creds are enough for the SDK to sign. Response shape:
+  `{"output":{"message":{"role":"assistant","content":[{"text":"..."}]}},"stopReason":"end_turn","usage":{...}}`
+
+Then drive it through the real CLI path:
+```
+bin/loomwork project create --home $H --name qa-demo
+bin/loomwork artifact add --home $H --project qa-demo --name spec.md --type spec --content "..."
+bin/loomwork run --home $H --project qa-demo --artifact spec.md --model azure/gpt-4o-test --prompt "..."
+```
+Prompt runs otherwise need a local Ollama (:11434) or LM Studio (:1234/v1), neither of which is installed.
+
+## Recording CLI evidence
+There is no web UI for the CLI paths. `xterm`/`gnome-terminal` are absent but `konsole` is installed:
+`nohup konsole &`, then `wmctrl -a Konsole && wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz`.
+Konsole font-size changes via `ctrl+shift+plus` and `konsoleprofile Font=...` did not take effect;
+output is still legible because the recording captures the real 1600x1200 display. Put each test step
+in a small `/tmp/*.sh` script and run them one at a time so the terminal shows short, readable commands.
 
 ## Devin Secrets Needed
-None. All project/requirement/artifact/source flows are local filesystem only.
+None for this flow. Real Azure/Bedrock verification would require `AZURE_AI_API_KEY`
+(plus a real `azure.endpoint`/`deployment`) and `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+(optionally `AWS_SESSION_TOKEN`) with Bedrock model access.
