@@ -21,7 +21,8 @@ Dependency rules (enforced by review, verified by `go vet` + tests):
 * `internal/model` imports only the standard library. It knows nothing about HTTP,
   providers, presets, or storage. It holds both the generic `Artifact` and the
   typed QA entities (`Requirement` today) that carry their own lifecycle.
-* `internal/provider` imports only the standard library plus `internal/config`.
+* `internal/provider` imports only the standard library, `internal/config`, and
+  the AWS SDK for Go v2 (Bedrock signing and invocation only).
   It knows nothing about projects or artifacts — it takes a `Request` and returns
   a `Response`.
 * `internal/preset` depends on `internal/provider` only for the normalized
@@ -114,16 +115,20 @@ type TextGenerator interface {
 `map[string]any` escape hatch for backend-specific knobs. Each adapter maps
 normalized parameters onto its own wire format:
 
-| Normalized | Ollama (`options`) | LM Studio / OpenAI | Azure AI Foundry (planned) | Bedrock (planned) |
+| Normalized | Ollama (`options`) | LM Studio / OpenAI | Azure AI Foundry | Bedrock (`Converse`) |
 |---|---|---|---|---|
-| `Temperature` | `temperature` | `temperature` | `temperature` | model-specific body |
-| `TopP` | `top_p` | `top_p` | `top_p` | model-specific body |
-| `TopK` | `top_k` | *(unsupported, ignored)* | *(model dependent)* | model-specific body |
-| `MaxOutputTokens` | `num_predict` | `max_tokens` | `max_tokens` | model-specific body |
-| `Stop` | `stop` | `stop` | `stop` | model-specific body |
-| `Seed` | `seed` | `seed` | `seed` | model-specific body |
-| `RepeatPenalty` | `repeat_penalty` | `frequency_penalty`-adjacent *(ignored)* | *(model dependent)* | model-specific body |
+| `Temperature` | `temperature` | `temperature` | `temperature` | `inferenceConfig.temperature` |
+| `TopP` | `top_p` | `top_p` | `top_p` | `inferenceConfig.topP` |
+| `TopK` | `top_k` | *(unsupported, ignored)* | *(unsupported, ignored)* | *(model specific, ignored)* |
+| `MaxOutputTokens` | `num_predict` | `max_tokens` | `max_tokens` | `inferenceConfig.maxTokens` |
+| `Stop` | `stop` | `stop` | `stop` | `inferenceConfig.stopSequences` |
+| `Seed` | `seed` | `seed` | `seed` | *(model specific, ignored)* |
+| `RepeatPenalty` | `repeat_penalty` | `frequency_penalty`-adjacent *(ignored)* | *(unsupported, ignored)* | *(model specific, ignored)* |
 | `ContextWindow` | `num_ctx` | *(server-side)* | *(server-side)* | *(server-side)* |
+
+`Params.Extra` is the escape hatch for the ignored knobs: OpenAI-compatible
+adapters merge it into the request body, and Bedrock sends it as
+`additionalModelRequestFields`.
 
 Unsupported parameters are dropped, never guessed at — the mapping table above is
 the contract, and each adapter's tests assert its wire body.
@@ -134,12 +139,16 @@ Adapter status:
 * `lmstudio.go` — implemented (`POST /v1/chat/completions`, `GET /v1/models`,
   optional bearer token). Any other OpenAI-compatible local server works by
   pointing the base URL at it.
-* `azure.go` — scaffold: constructor validates endpoint/deployment/api-version and
-  reads the key from the environment; `Generate` returns `ErrNotImplemented`.
-* `bedrock.go` — scaffold: constructor validates region/model id and reads AWS
-  credentials from the environment; `Generate` returns `ErrNotImplemented`.
-  SigV4 signing is deliberately deferred; it may use the AWS SDK now that
-  third-party modules are permitted.
+* `azure.go` — implemented
+  (`POST {endpoint}/openai/deployments/{deployment}/chat/completions?api-version=...`,
+  `GET {endpoint}/openai/models?api-version=...`, key in the `api-key` header).
+  Foundry is OpenAI-compatible, so it shares the LM Studio body mapping. Entra ID
+  (bearer token) credentials are still a TODO.
+* `bedrock.go` — implemented against the `Converse` API, so one body shape covers
+  every model family; `Models` uses `ListFoundationModels`. SigV4 signing and
+  invocation are delegated to the AWS SDK for Go v2 rather than hand-rolled, and
+  credentials come from the environment (static keys) or a named shared-config
+  profile. `baseUrl` overrides the resolved AWS endpoint (VPC endpoints, tests).
 
 Image generation is a separate interface because its shape is genuinely different
 (asynchronous, multi-artifact):

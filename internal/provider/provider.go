@@ -38,9 +38,10 @@ func ParseKind(raw string) (Kind, error) {
 	return "", fmt.Errorf("unknown provider kind %q: supported kinds are ollama, lmstudio, azure, bedrock, imgen", raw)
 }
 
-// ErrNotImplemented is wrapped by adapters that exist behind the interface but
-// whose request mapping is not finished yet. Callers detect the condition with
-// errors.Is rather than string matching.
+// ErrNotImplemented is the sentinel for an adapter that exists behind the
+// interface but whose request mapping is not finished yet. Callers detect the
+// condition with errors.Is rather than string matching. No adapter returns it
+// today; it stays the contract for the next one to land incrementally.
 var ErrNotImplemented = errors.New("provider adapter not implemented yet")
 
 // Role identifies the author of a message in a chat-shaped request.

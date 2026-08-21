@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -168,7 +167,7 @@ func TestBuildImageGenerator(t *testing.T) {
 	}
 }
 
-func TestAzureScaffoldWiring(t *testing.T) {
+func TestAzureWiring(t *testing.T) {
 	t.Setenv("CUSTOM_AZURE_KEY", "secret-value")
 	adapter, err := NewAzure(Config{
 		Kind:  KindAzure,
@@ -181,13 +180,9 @@ func TestAzureScaffoldWiring(t *testing.T) {
 	if got := adapter.ChatCompletionsURL(); got != wantURL {
 		t.Errorf("ChatCompletionsURL() = %q, want %q", got, wantURL)
 	}
-
-	_, err = adapter.Generate(context.Background(), Request{Model: "m", Prompt: "hi"})
-	if !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("Generate error = %v, want it to wrap ErrNotImplemented", err)
-	}
-	if _, err := adapter.Models(context.Background()); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("Models error = %v, want it to wrap ErrNotImplemented", err)
+	wantModelsURL := "https://example.openai.azure.com/openai/models?api-version=" + DefaultAzureAPIVersion
+	if got := adapter.ModelsURL(); got != wantModelsURL {
+		t.Errorf("ModelsURL() = %q, want %q", got, wantModelsURL)
 	}
 }
 
@@ -205,7 +200,7 @@ func TestNewAzureRequiresCredentialsAndCoordinates(t *testing.T) {
 	}
 }
 
-func TestBedrockScaffoldWiring(t *testing.T) {
+func TestBedrockWiring(t *testing.T) {
 	t.Setenv(EnvAWSAccessKeyID, "aws-id")
 	t.Setenv(EnvAWSSecretAccessKey, "aws-secret")
 	adapter, err := NewBedrock(Config{Kind: KindBedrock, Bedrock: BedrockConfig{Region: "us-west-2", ModelID: "anthropic.claude"}})
@@ -215,12 +210,6 @@ func TestBedrockScaffoldWiring(t *testing.T) {
 	wantURL := "https://bedrock-runtime.us-west-2.amazonaws.com/model/anthropic.claude/converse"
 	if got := adapter.ConverseURL(""); got != wantURL {
 		t.Errorf("ConverseURL() = %q, want %q", got, wantURL)
-	}
-	if _, err := adapter.Generate(context.Background(), Request{Model: "m", Prompt: "hi"}); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("Generate error = %v, want it to wrap ErrNotImplemented", err)
-	}
-	if _, err := adapter.Models(context.Background()); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("Models error = %v, want it to wrap ErrNotImplemented", err)
 	}
 }
 

@@ -65,8 +65,8 @@ is involved in this phase.
 One `provider.TextGenerator` interface with adapters:
 - **Ollama** — local HTTP API (`/api/generate`, `/api/chat`, `/api/tags`). *Implemented.*
 - **LM Studio** — local OpenAI-compatible HTTP API (`/v1/chat/completions`, `/v1/models`). *Implemented.*
-- **Azure AI Foundry** — API-key/credential-based remote inference. *Scaffolded behind the interface; config wiring in place; request/response mapping deferred.*
-- **AWS Bedrock** — remote inference via AWS credentials/SigV4. *Scaffolded behind the interface; config wiring in place; request signing deferred.*
+- **Azure AI Foundry** — API-key-based remote inference over the OpenAI-compatible deployment API. *Implemented; Entra ID (bearer token) credentials deferred.*
+- **AWS Bedrock** — remote inference via the `Converse` API, with AWS credentials/SigV4 handled by the AWS SDK for Go. *Implemented.*
 
 One `provider.ImageGenerator` interface with an adapter for the local
 [`ilyaus/im-gen`](https://github.com/ilyaus/im-gen) FastAPI service (submit job →
@@ -139,8 +139,8 @@ agnostic so that rebuild touches neither domain nor provider code.
 | Run comparison and testability dashboard (phase 5) | Deferred |
 | `TextGenerator` interface + Ollama adapter | **Implemented** |
 | `TextGenerator` + LM Studio (OpenAI-compatible) adapter | **Implemented** |
-| Azure AI Foundry adapter | Scaffolded (config + interface only) |
-| AWS Bedrock adapter | Scaffolded (config + interface only) |
+| Azure AI Foundry adapter | **Implemented** (API-key credentials) |
+| AWS Bedrock adapter | **Implemented** (`Converse`, SDK-signed) |
 | `ImageGenerator` interface + `im-gen` HTTP adapter | **Implemented** (not CLI-exposed) |
 | Per-model preset registry + validation | **Implemented** |
 | `cue-note` client interface + HTTP impl + in-memory stub | **Implemented** (contract assumed) |

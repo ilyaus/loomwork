@@ -148,11 +148,13 @@ landing view.
 
 ## Deferred, outside the vision's phases
 
-Wiki generation, the creative playground (preset sweeps, `im-gen` image
-generation, side-by-side comparison), and completing the Azure AI Foundry and AWS
-Bedrock adapters remain planned but are not on the QA-workbench critical path.
-Bedrock needs SigV4; a third-party AWS SDK is now permitted, since the
-standard-library-only rule has been lifted.
+Wiki generation and the creative playground (preset sweeps, `im-gen` image
+generation, side-by-side comparison) remain planned but are not on the
+QA-workbench critical path. The Azure AI Foundry and AWS Bedrock adapters are now
+implemented: Foundry over its OpenAI-compatible deployment API, Bedrock over
+`Converse` with SigV4 signing delegated to the AWS SDK for Go v2 (third-party
+modules are permitted since the standard-library-only rule was lifted). Azure
+Entra ID (bearer token) credentials are the one piece still deferred.
 
 ## Not planned
 
