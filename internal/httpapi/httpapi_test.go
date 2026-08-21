@@ -163,6 +163,20 @@ func TestRequirementLifecycleOverHTTP(t *testing.T) {
 	if updated.Version != 2 || updated.SourceRef != "AB#12" {
 		t.Fatalf("updated = %+v, want v2 inheriting the source reference", updated)
 	}
+	// The editor resends the source pair it displays, so a version carrying a
+	// reference stays valid: a reference without its type is rejected.
+	var resent model.Requirement
+	mustCall(t, handler, http.MethodPatch, "/api/projects/checkout/requirements/req-001", map[string]any{
+		"text": "Cart totals include tax, shipping, and discounts", "source_type": "ado", "source_ref": "AB#12",
+	}, &resent, http.StatusOK)
+	if resent.Version != 3 || resent.SourceType != model.SourceTypeADO || resent.SourceRef != "AB#12" {
+		t.Fatalf("resent = %+v, want v3 keeping the ADO reference", resent)
+	}
+	if got := errorText(t, handler, http.MethodPatch, "/api/projects/checkout/requirements/req-001",
+		map[string]any{"text": "Orphan reference", "source_ref": "AB#99"}, http.StatusBadRequest); !strings.Contains(got, "source type") {
+		t.Errorf("error = %q, want a missing source type error", got)
+	}
+
 	var first model.Requirement
 	mustCall(t, handler, http.MethodGet, "/api/projects/checkout/requirements/req-001?version=1", nil, &first, http.StatusOK)
 	if first.Text != "Cart totals include tax" || first.Status != model.RequirementStatusSuperseded {
@@ -170,15 +184,15 @@ func TestRequirementLifecycleOverHTTP(t *testing.T) {
 	}
 	var history []model.Requirement
 	mustCall(t, handler, http.MethodGet, "/api/projects/checkout/requirements/req-001/history", nil, &history, http.StatusOK)
-	if len(history) != 2 || history[0].Version != 1 || history[1].Version != 2 {
-		t.Fatalf("history = %+v, want both versions oldest first", history)
+	if len(history) != 3 || history[0].Version != 1 || history[2].Version != 3 {
+		t.Fatalf("history = %+v, want every version oldest first", history)
 	}
 
 	// Status changes are their own endpoint and retain the requirement.
 	var obsolete model.Requirement
 	mustCall(t, handler, http.MethodPost, "/api/projects/checkout/requirements/req-001/status",
 		map[string]any{"status": "obsolete"}, &obsolete, http.StatusOK)
-	if obsolete.Version != 2 || obsolete.Status != model.RequirementStatusObsolete {
+	if obsolete.Version != 3 || obsolete.Status != model.RequirementStatusObsolete {
 		t.Fatalf("obsolete = %+v, want the current version marked obsolete", obsolete)
 	}
 

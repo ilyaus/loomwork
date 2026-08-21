@@ -314,7 +314,7 @@ function updateRequirementForm(project, current, run) {
     el(
       'div',
       { class: 'grid2' },
-      field('source type', select('source_type', [['', 'unchanged'], ...SOURCE_TYPES], '')),
+      field('source type', select('source_type', [['', 'none'], ...SOURCE_TYPES], current.source_type || '')),
       field('source reference', el('input', { name: 'source_ref', value: current.source_ref || '' })),
       field('tags (comma separated)', el('input', { name: 'tags', value: (current.tags || []).join(',') })),
     ),
