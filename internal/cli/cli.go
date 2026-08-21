@@ -54,6 +54,7 @@ Commands:
                    [--runner PATH] [--auth-config PATH | --token-provider-config PATH]
                    [--dry-run] [--arg VALUE ...] [--timeout SECONDS]
                    [--name NAME] [--tags a,b]
+  serve            [--addr 127.0.0.1:8787] browser UI over this workspace (loopback only)
   providers        list configured providers, presets, and credential status
 
 Global flags (accepted by every command):
@@ -114,6 +115,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return runGroup(rest, stdout, stderr, map[string]commandFunc{
 			"run": workbenchRun,
 		})
+	case "serve":
+		return runCommand(serve, rest, stdout, stderr)
 	case "providers":
 		return runCommand(providersList, rest, stdout, stderr)
 	default:

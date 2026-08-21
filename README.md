@@ -155,9 +155,27 @@ revision rather than overwriting.
 
 ### Browser UI
 
-Deferred. An earlier `loomwork serve` HTTP+UI attempt was discarded and removed;
-the browser UI will be rebuilt over the typed domain entities. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+```
+loomwork serve [--addr 127.0.0.1:8787]
+```
+
+Serves a single-page workbench UI and its JSON API over the same workspace the
+CLI uses. The assets are embedded in the binary, so there is nothing to install
+or build separately.
+
+This first increment covers the Phase-1 domain only: the directory-of-projects
+landing view (per-project counts come from the cached `project.json` index, so
+no project scan is needed), a project view with its document source links, and
+requirement management — create, list, inspect version history, save a new
+version, and change status. Last-tested date, requirement coverage, and
+open-gaps counts are rendered as placeholders until later phases populate them.
+LLM surfaces are not exposed yet.
+
+`--addr` accepts a bare port or a loopback address; non-loopback hosts are
+rejected. Loomwork is local-first and single-user, so the server has no
+authentication and must stay on the loopback interface. Requirement payloads on
+the wire match [`docs/schemas/requirement.schema.json`](docs/schemas/requirement.schema.json)
+exactly.
 
 ## Workspace layout
 
