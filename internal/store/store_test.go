@@ -14,14 +14,14 @@ import (
 	"github.com/ilyaus/loomwork/internal/model"
 )
 
-func newStore(t *testing.T) *FileStore {
+func newStore(t *testing.T) *DirStore {
 	t.Helper()
-	fileStore, err := NewFileStore(filepath.Join(t.TempDir(), "projects"))
+	dirStore, err := NewDirStore(filepath.Join(t.TempDir(), "projects"))
 	if err != nil {
-		t.Fatalf("NewFileStore: %v", err)
+		t.Fatalf("NewDirStore: %v", err)
 	}
-	var _ ProjectStore = fileStore
-	return fileStore
+	var _ ProjectStore = dirStore
+	return dirStore
 }
 
 func newProject(t *testing.T, name string) *model.Project {
@@ -33,14 +33,14 @@ func newProject(t *testing.T, name string) *model.Project {
 	return project
 }
 
-func TestNewFileStoreRequiresDirectory(t *testing.T) {
-	if _, err := NewFileStore("  "); err == nil {
+func TestNewDirStoreRequiresDirectory(t *testing.T) {
+	if _, err := NewDirStore("  "); err == nil {
 		t.Fatal("expected an error for an empty directory")
 	}
 }
 
-func TestFileStoreCreateLoadAndRoundTripArtifacts(t *testing.T) {
-	fileStore := newStore(t)
+func TestDirStoreCreateLoadAndRoundTripArtifacts(t *testing.T) {
+	dirStore := newStore(t)
 	project := newProject(t, "Log Triage")
 	if _, err := project.AddArtifact(model.ArtifactSpec{
 		Name:   "api.log",
@@ -52,11 +52,11 @@ func TestFileStoreCreateLoadAndRoundTripArtifacts(t *testing.T) {
 		t.Fatalf("AddArtifact: %v", err)
 	}
 
-	if err := fileStore.Create(project); err != nil {
+	if err := dirStore.Create(project); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	loaded, err := fileStore.Load(project.ID)
+	loaded, err := dirStore.Load(project.ID)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -72,24 +72,24 @@ func TestFileStoreCreateLoadAndRoundTripArtifacts(t *testing.T) {
 	}
 }
 
-func TestFileStoreCreateRejectsDuplicateNames(t *testing.T) {
-	fileStore := newStore(t)
-	if err := fileStore.Create(newProject(t, "alpha")); err != nil {
+func TestDirStoreCreateRejectsDuplicateNames(t *testing.T) {
+	dirStore := newStore(t)
+	if err := dirStore.Create(newProject(t, "alpha")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	err := fileStore.Create(newProject(t, "ALPHA"))
+	err := dirStore.Create(newProject(t, "ALPHA"))
 	if err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Fatalf("error = %v, want a case-insensitive duplicate name rejection", err)
 	}
-	if err := fileStore.Create(nil); err == nil {
+	if err := dirStore.Create(nil); err == nil {
 		t.Fatal("expected an error creating a nil project")
 	}
 }
 
-func TestFileStoreSaveOverwrites(t *testing.T) {
-	fileStore := newStore(t)
+func TestDirStoreSaveOverwrites(t *testing.T) {
+	dirStore := newStore(t)
 	project := newProject(t, "alpha")
-	if err := fileStore.Create(project); err != nil {
+	if err := dirStore.Create(project); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if _, err := project.AddArtifact(model.ArtifactSpec{
@@ -97,56 +97,56 @@ func TestFileStoreSaveOverwrites(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddArtifact: %v", err)
 	}
-	if err := fileStore.Save(project); err != nil {
+	if err := dirStore.Save(project); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	loaded, err := fileStore.Load(project.ID)
+	loaded, err := dirStore.Load(project.ID)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if len(loaded.Artifacts) != 1 {
 		t.Fatalf("artifacts = %d, want the saved artifact", len(loaded.Artifacts))
 	}
-	if err := fileStore.Save(nil); err == nil {
+	if err := dirStore.Save(nil); err == nil {
 		t.Fatal("expected an error saving a nil project")
 	}
 }
 
-func TestFileStoreResolveByIDAndName(t *testing.T) {
-	fileStore := newStore(t)
+func TestDirStoreResolveByIDAndName(t *testing.T) {
+	dirStore := newStore(t)
 	project := newProject(t, "Alpha")
-	if err := fileStore.Create(project); err != nil {
+	if err := dirStore.Create(project); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	byID, err := fileStore.Resolve(project.ID)
+	byID, err := dirStore.Resolve(project.ID)
 	if err != nil {
 		t.Fatalf("Resolve by id: %v", err)
 	}
-	byName, err := fileStore.Resolve("alpha")
+	byName, err := dirStore.Resolve("alpha")
 	if err != nil {
 		t.Fatalf("Resolve by name: %v", err)
 	}
 	if byID.ID != project.ID || byName.ID != project.ID {
 		t.Errorf("resolved = %q/%q, want %q", byID.ID, byName.ID, project.ID)
 	}
-	if _, err := fileStore.Resolve("nope"); !errors.Is(err, ErrNotFound) {
+	if _, err := dirStore.Resolve("nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Resolve error = %v, want ErrNotFound", err)
 	}
-	if _, err := fileStore.Load("prj-missing"); !errors.Is(err, ErrNotFound) {
+	if _, err := dirStore.Load("prj-missing"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Load error = %v, want ErrNotFound", err)
 	}
 }
 
-func TestFileStoreListIgnoresNonProjectFilesAndSortsByName(t *testing.T) {
+func TestDirStoreListIgnoresNonProjectFilesAndSortsByName(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "projects")
-	fileStore, err := NewFileStore(dir)
+	dirStore, err := NewDirStore(dir)
 	if err != nil {
-		t.Fatalf("NewFileStore: %v", err)
+		t.Fatalf("NewDirStore: %v", err)
 	}
 	for _, name := range []string{"zeta", "alpha", "mid"} {
-		if err := fileStore.Create(newProject(t, name)); err != nil {
+		if err := dirStore.Create(newProject(t, name)); err != nil {
 			t.Fatalf("Create(%s): %v", name, err)
 		}
 	}
@@ -157,7 +157,7 @@ func TestFileStoreListIgnoresNonProjectFilesAndSortsByName(t *testing.T) {
 		t.Fatalf("make stray dir: %v", err)
 	}
 
-	projects, err := fileStore.List()
+	projects, err := dirStore.List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -170,50 +170,60 @@ func TestFileStoreListIgnoresNonProjectFilesAndSortsByName(t *testing.T) {
 	}
 }
 
-func TestFileStoreLoadReportsMalformedJSON(t *testing.T) {
+func TestDirStoreLoadReportsMalformedJSON(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "projects")
-	fileStore, err := NewFileStore(dir)
+	dirStore, err := NewDirStore(dir)
 	if err != nil {
-		t.Fatalf("NewFileStore: %v", err)
+		t.Fatalf("NewDirStore: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "prj-bad.json"), []byte("{not json"), 0o644); err != nil {
 		t.Fatalf("write malformed project: %v", err)
 	}
-	if _, err := fileStore.Load("prj-bad"); err == nil || !strings.Contains(err.Error(), "parse project") {
+	if _, err := dirStore.Load("prj-bad"); err == nil || !strings.Contains(err.Error(), "parse project") {
 		t.Fatalf("error = %v, want a parse failure", err)
 	}
 }
 
-func TestFileStoreWriteLeavesNoTempFiles(t *testing.T) {
+func TestDirStoreWriteLeavesNoTempFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "projects")
-	fileStore, err := NewFileStore(dir)
+	dirStore, err := NewDirStore(dir)
 	if err != nil {
-		t.Fatalf("NewFileStore: %v", err)
+		t.Fatalf("NewDirStore: %v", err)
 	}
-	if err := fileStore.Create(newProject(t, "alpha")); err != nil {
+	project := newProject(t, "alpha")
+	if err := dirStore.Create(project); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
-	if len(entries) != 1 || !strings.HasSuffix(entries[0].Name(), ".json") {
-		t.Fatalf("entries = %v, want only the project document", entries)
+	if len(entries) != 1 || entries[0].Name() != project.ID || !entries[0].IsDir() {
+		t.Fatalf("entries = %v, want only the project directory", entries)
+	}
+	projectEntries, err := os.ReadDir(filepath.Join(dir, project.ID))
+	if err != nil {
+		t.Fatalf("ReadDir project: %v", err)
+	}
+	for _, entry := range projectEntries {
+		if strings.Contains(entry.Name(), ".tmp") {
+			t.Fatalf("entry %q is a leftover temp file", entry.Name())
+		}
 	}
 }
 
-// separateStores models independent processes: each gets its own FileStore over
+// separateStores models independent processes: each gets its own DirStore over
 // the same directory, so the in-process mutex cannot serialize them and only the
 // lock file can.
-func separateStores(t *testing.T, dir string, count int) []*FileStore {
+func separateStores(t *testing.T, dir string, count int) []*DirStore {
 	t.Helper()
-	stores := make([]*FileStore, 0, count)
+	stores := make([]*DirStore, 0, count)
 	for i := 0; i < count; i++ {
-		fileStore, err := NewFileStore(dir)
+		dirStore, err := NewDirStore(dir)
 		if err != nil {
-			t.Fatalf("NewFileStore: %v", err)
+			t.Fatalf("NewDirStore: %v", err)
 		}
-		stores = append(stores, fileStore)
+		stores = append(stores, dirStore)
 	}
 	return stores
 }
@@ -229,9 +239,9 @@ func TestUpdateSerializesConcurrentWriters(t *testing.T) {
 	errs := make(chan error, len(writers))
 	for i, writer := range writers {
 		group.Add(1)
-		go func(index int, fileStore *FileStore) {
+		go func(index int, dirStore *DirStore) {
 			defer group.Done()
-			_, err := fileStore.Update("conc", func(project *model.Project) error {
+			_, err := dirStore.Update("conc", func(project *model.Project) error {
 				_, addErr := project.AddArtifact(model.ArtifactSpec{
 					Name: fmt.Sprintf("a%d", index),
 					Type: model.ArtifactTypeDoc,
@@ -267,9 +277,9 @@ func TestCreateRejectsDuplicateNamesUnderConcurrency(t *testing.T) {
 	var created int64
 	for _, writer := range writers {
 		group.Add(1)
-		go func(fileStore *FileStore) {
+		go func(dirStore *DirStore) {
 			defer group.Done()
-			if err := fileStore.Create(newProject(t, "dup")); err == nil {
+			if err := dirStore.Create(newProject(t, "dup")); err == nil {
 				atomic.AddInt64(&created, 1)
 			}
 		}(writer)
@@ -289,42 +299,42 @@ func TestCreateRejectsDuplicateNamesUnderConcurrency(t *testing.T) {
 }
 
 func TestUpdateLeavesProjectUntouchedWhenMutateFails(t *testing.T) {
-	fileStore := newStore(t)
-	if err := fileStore.Create(newProject(t, "alpha")); err != nil {
+	dirStore := newStore(t)
+	if err := dirStore.Create(newProject(t, "alpha")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	sentinel := errors.New("nope")
-	if _, err := fileStore.Update("alpha", func(project *model.Project) error {
+	if _, err := dirStore.Update("alpha", func(project *model.Project) error {
 		_, _ = project.AddArtifact(model.ArtifactSpec{Name: "a", Type: model.ArtifactTypeDoc, Body: model.Body{Content: "x"}})
 		return sentinel
 	}); !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want the mutate error", err)
 	}
-	project, err := fileStore.FindByName("alpha")
+	project, err := dirStore.FindByName("alpha")
 	if err != nil {
 		t.Fatalf("FindByName: %v", err)
 	}
 	if len(project.Artifacts) != 0 {
 		t.Fatalf("artifacts = %d, want the stored project untouched", len(project.Artifacts))
 	}
-	if _, err := fileStore.Update("missing", func(*model.Project) error { return nil }); !errors.Is(err, ErrNotFound) {
+	if _, err := dirStore.Update("missing", func(*model.Project) error { return nil }); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("error = %v, want ErrNotFound", err)
 	}
-	if _, err := fileStore.Update("alpha", nil); err == nil {
+	if _, err := dirStore.Update("alpha", nil); err == nil {
 		t.Fatal("Update(nil mutate) = nil, want an error")
 	}
 }
 
 func TestLockIsReleasedAfterEveryWrite(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "projects")
-	fileStore, err := NewFileStore(dir)
+	dirStore, err := NewDirStore(dir)
 	if err != nil {
-		t.Fatalf("NewFileStore: %v", err)
+		t.Fatalf("NewDirStore: %v", err)
 	}
-	if err := fileStore.Create(newProject(t, "alpha")); err != nil {
+	if err := dirStore.Create(newProject(t, "alpha")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := fileStore.Update("alpha", func(*model.Project) error { return nil }); err != nil {
+	if _, err := dirStore.Update("alpha", func(*model.Project) error { return nil }); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, lockFileName)); !os.IsNotExist(err) {
@@ -334,9 +344,9 @@ func TestLockIsReleasedAfterEveryWrite(t *testing.T) {
 
 func TestLockBreaksStaleLockFile(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "projects")
-	fileStore, err := NewFileStore(dir)
+	dirStore, err := NewDirStore(dir)
 	if err != nil {
-		t.Fatalf("NewFileStore: %v", err)
+		t.Fatalf("NewDirStore: %v", err)
 	}
 	lockPath := filepath.Join(dir, lockFileName)
 	if err := os.WriteFile(lockPath, []byte("999999"), 0o600); err != nil {
@@ -346,7 +356,7 @@ func TestLockBreaksStaleLockFile(t *testing.T) {
 	if err := os.Chtimes(lockPath, stale, stale); err != nil {
 		t.Fatalf("Chtimes: %v", err)
 	}
-	if err := fileStore.Create(newProject(t, "alpha")); err != nil {
+	if err := dirStore.Create(newProject(t, "alpha")); err != nil {
 		t.Fatalf("Create over a stale lock: %v", err)
 	}
 }

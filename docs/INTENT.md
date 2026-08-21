@@ -1,21 +1,38 @@
 # Project Intent
 
-## Overview
-Loomwork is a lightweight, local-first Go orchestrator ("loom") for model-assisted
-work over project artifacts. A user creates a **project**, fills it with
-**artifacts** (specifications, logs, test results, diagrams, documents), and then
-runs **prompts** against those artifacts using **local or remote LLMs**. Every
-prompt run produces a new versioned artifact inside the project, so the project
-accumulates a traceable chain of inputs, prompts, and generated outputs.
+> **Authoritative product spec:** [`docs/loom-work-vision.md`](loom-work-vision.md).
+> Where this document and the vision disagree, the vision wins and this document
+> is corrected. This file records how the vision maps onto what exists in the
+> codebase today; [`docs/ROADMAP.md`](ROADMAP.md) records the order of delivery.
 
-Loomwork is an orchestrator, not a model host and not a domain tool. It owns:
-- the project/artifact lifecycle and versioning,
-- provider selection and per-model parameter presets,
-- the prompt-run pipeline (resolve artifact → build request → call provider → store result),
+## Overview
+Loomwork is a single-user, local-first **QA workbench**: it organizes
+documentation sources, requirements, agent definitions and override rules,
+generated test suites, and execution reports for a service under test — without
+executing the tests itself. Execution is delegated to a local executable or a
+remote service through a defined contract, and reports are ingested back.
+
+A project is a **directory on disk**, not a database record. It holds
+`project.json` (name, description, document source links, cached index) plus one
+subfolder per entity family: `requirements/`, `agent-definitions/`,
+`test-suites/`, `executor-config/`, `reports/`.
+
+Loomwork is a non-executing control plane with first-class QA domain entities. It
+owns:
+- the project directory lifecycle and document source links,
+- typed, versioned QA entities — requirements today; agent definitions, override
+  rules, test suites, executor configs, and reports in later phases,
+- traceability: a test case links to requirements, a requirement links to its
+  source of record (ADO/Confluence/GitHub), a run links to a suite version,
+- provider and agent access behind one internal interface so Ollama, LM Studio,
+  Azure Foundry, Bedrock, and the Claude/Copilot agent SDKs are interchangeable,
+- the artifact/prompt-run pipeline that the above is built on (resolve artifact →
+  build request → call provider → store result),
 - integration with sibling services (`api-test-runner`, `im-gen`, `cue-note`).
 
-Everything domain specific (wiki generation, test analysis, creative work) is a
-*use case* expressed on top of that foundation, not a new subsystem.
+The generic `Artifact` remains the store for free-form material (specs, logs,
+reports, generated documents). QA concepts that carry their own lifecycle are
+**typed entities**, not artifacts — `model.Requirement` is the first of them.
 
 ## Full Product Vision
 
@@ -27,6 +44,22 @@ or an external reference (file path/URL), tags, a version, an optional parent
 wants automatically included in prompt runs; unpinned artifacts are working
 material. Prompt runs never mutate an input artifact: they append a new artifact
 version whose parent is the input.
+
+### 1b. Document sources and requirements (implemented now — phase 1)
+A project records its **document sources** as links into their system of record
+(GitHub, Confluence, Azure ADO, other) with an optional local path or S3 URI for
+a copy of the exported document.
+
+**Requirements** are a typed entity (`model.Requirement`), not an artifact. Each
+requirement has a stable id, tester-friendly text, an optional `source_type` /
+`source_ref` back-reference, a status (`active`, `obsolete`, `superseded`), and an
+origin (`authored` by a QA engineer or `extracted` by document analysis — both
+write the same schema to the same store). Versions are discrete retrievable
+snapshots: an update writes `req-001.v2.json` and marks v1 superseded, and
+nothing is ever deleted, so obsolete requirements stay auditable. Current-version
+pointers live in `requirements/index.json`; the wire format is fixed by
+[`docs/schemas/requirement.schema.json`](schemas/requirement.schema.json). No LLM
+is involved in this phase.
 
 ### 2. Model providers (implemented now — foundation, core abstraction)
 One `provider.TextGenerator` interface with adapters:
@@ -86,16 +119,24 @@ good results into pinned artifacts. Extension points: the existing
 and `cue-note` for storing the winning prompts.
 
 ### 8. Interfaces (partially implemented)
-A CLI (`cmd/loomwork`) is the foundation's entry point. An HTTP server and a
-richer UI are deferred; the orchestration package is deliberately transport
-agnostic so a server can be added without touching domain or provider code.
+A CLI (`cmd/loomwork`) is the entry point today. The end state is a browser UI
+over a local backend API. An earlier `serve`/`initial_ui` HTTP+UI attempt has
+been **discarded and removed**; the browser UI will be rebuilt fresh against the
+typed domain entities once they exist. The orchestration package stays transport
+agnostic so that rebuild touches neither domain nor provider code.
 
 ## Implemented vs. Deferred — summary
 
 | Area | Status |
 |---|---|
 | Project & artifact domain model, versioning, pinning, lineage | **Implemented** |
-| JSON file-backed project store | **Implemented** |
+| Directory-per-project store (`project.json` + entity subfolders) | **Implemented** |
+| Project document source links (GitHub/Confluence/ADO + local/S3 copies) | **Implemented** |
+| Typed `Requirement` entity: versioning, status, source refs, CLI CRUD | **Implemented** |
+| LLM document analysis, requirement extraction (phase 2) | Deferred |
+| Agent definitions, override rules, `AgentAdapter`, test generation (phase 3) | Deferred |
+| Execution contract, report ingestion, HTML rendering (phase 4) | Deferred |
+| Run comparison and testability dashboard (phase 5) | Deferred |
 | `TextGenerator` interface + Ollama adapter | **Implemented** |
 | `TextGenerator` + LM Studio (OpenAI-compatible) adapter | **Implemented** |
 | Azure AI Foundry adapter | Scaffolded (config + interface only) |
@@ -109,7 +150,8 @@ agnostic so a server can be added without touching domain or provider code.
 | Testing workbench: `workbench run` + report ingestion | **Implemented** (CLI runner only) |
 | Testing workbench Lambda path | Deferred |
 | Creative playground / sweeps / comparisons | Deferred |
-| HTTP server, auth, multi-user, remote persistence | Deferred |
+| Browser UI over a local backend API | Deferred (previous attempt discarded) |
+| Auth, multi-user, remote persistence | Deferred |
 
 ## Required Input
 To run a prompt the user must supply:
@@ -120,6 +162,12 @@ To run a prompt the user must supply:
   credentials via environment variables for remote providers.
 
 ## Non-Goals
+- **Executing tests.** Loomwork stores, organizes, versions, and displays; a
+  local executable or a remote service runs the tests and returns reports.
 - Hosting or fine-tuning models.
 - Reimplementing `api-test-runner`, `im-gen`, or `cue-note` functionality.
 - Multi-tenant service concerns (accounts, RBAC, quotas).
+- A relational database. Project state lives in the project directory; an
+  optional S3 sync is the only remote copy.
+- Value-level diffing of responses or requirement versions. Comparison is
+  structural (fields present/absent) and versions are discrete snapshots.

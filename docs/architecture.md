@@ -13,13 +13,14 @@
    (domain)        (adapters)         (registry)        (prompts/notes)
         │
         ▼
-  internal/store  (JSON file persistence of projects)
+  internal/store  (project directories: project.json + entity subfolders)
 ```
 
 Dependency rules (enforced by review, verified by `go vet` + tests):
 
 * `internal/model` imports only the standard library. It knows nothing about HTTP,
-  providers, presets, or storage.
+  providers, presets, or storage. It holds both the generic `Artifact` and the
+  typed QA entities (`Requirement` today) that carry their own lifecycle.
 * `internal/provider` imports only the standard library plus `internal/config`.
   It knows nothing about projects or artifacts — it takes a `Request` and returns
   a `Response`.
@@ -56,6 +57,8 @@ Dependency rules (enforced by review, verified by `go vet` + tests):
 ```text
 Project
   ID, Name, Description, Tags[], CreatedAt, UpdatedAt
+  Sources[]    (document source links: type, URL, optional local path / S3 URI)
+  Index        (cached counts: requirements, active requirements)
   Artifacts[]  (append-only for content; metadata may change in place)
 
 Artifact
@@ -63,6 +66,12 @@ Artifact
   Body { Content | Ref, MediaType }     // exactly one of Content/Ref
   Metadata map[string]string            // producer provenance, free-form
   CreatedAt
+
+Requirement                             // typed entity, stored outside Project
+  ID, Version, Text
+  SourceType (ado|confluence|github|other), SourceRef
+  Status (active|obsolete|superseded), Origin (authored|extracted)
+  Tags[], Metadata map[string]string, CreatedAt
 ```
 
 * **Types**: `spec`, `log`, `test-result`, `diagram`, `doc`, `generated`. The type
@@ -77,6 +86,17 @@ Artifact
   context without any new concept.
 * **Immutability of content**: no API mutates `Body`. This keeps prompt runs
   reproducible and audit trails intact.
+* **Typed entities vs. artifacts**: QA concepts with their own lifecycle are typed
+  entities persisted per-version in the project directory, not `Artifact`
+  instances. `Requirement` is the first; agent definitions, override rules, test
+  suites, and execution reports follow in later phases. `Artifact` stays the store
+  for free-form material.
+* **Requirement versioning**: each version is an immutable snapshot file. An
+  update writes the next version and marks the previous one `superseded`; nothing
+  is deleted, so obsolete requirements remain auditable. The wire format is fixed
+  by [`schemas/requirement.schema.json`](schemas/requirement.schema.json), and
+  QA-authored (`authored`) and later LLM-extracted (`extracted`) requirements
+  share it.
 
 ## 4. Provider Abstraction (`internal/provider`)
 
@@ -118,7 +138,8 @@ Adapter status:
   reads the key from the environment; `Generate` returns `ErrNotImplemented`.
 * `bedrock.go` — scaffold: constructor validates region/model id and reads AWS
   credentials from the environment; `Generate` returns `ErrNotImplemented`.
-  SigV4 signing is a pure-Go implementation task (no CGO), deliberately deferred.
+  SigV4 signing is deliberately deferred; it may use the AWS SDK now that
+  third-party modules are permitted.
 
 Image generation is a separate interface because its shape is genuinely different
 (asynchronous, multi-artifact):
@@ -200,11 +221,23 @@ layer so both implementations behave identically.
 
 ## 7. Persistence (`internal/store`)
 
-The foundation ships a JSON file store: one file per project under
-`$LOOMWORK_HOME/projects/<project-id>.json`, plus an index derived by scanning that
-directory. Writes are atomic (write temp file → `os.Rename`). The store is defined
-by an interface (`store.ProjectStore`) so object storage or a database can be
-substituted later without touching orchestration.
+`store.DirStore` gives each project a directory under `$LOOMWORK_HOME/projects/`:
+
+```text
+projects/<project-id>/
+  project.json        metadata, document source links, derived index counts
+  requirements/       <id>.v<n>.json per version + index.json current pointers
+  agent-definitions/  test-suites/  executor-config/  reports/   (later phases)
+```
+
+Every write is atomic (temp file → `os.Rename`) and read-modify-write cycles hold
+a cross-process directory lock, because each CLI invocation is a separate
+process; readers deliberately bypass the lock. The project list is derived by
+scanning the projects root. Projects written by the earlier flat
+`projects/<project-id>.json` layout remain readable and migrate to a directory on
+first write. Two interfaces define the contract — `store.ProjectStore` and
+`store.RequirementStore` — so object storage or a database can be substituted
+later without touching orchestration.
 
 ## 8. Configuration and Secrets (`internal/config`)
 
@@ -225,4 +258,7 @@ substituted later without touching orchestration.
 | Testing workbench | new `internal/exec` process runner for `api-test-runner`, `internal/ingest` for report → `test-result` artifact, presets for analysis models |
 | `sdd-qa` generate→run→analyze→refine loop | chained prompt runs with artifact lineage as the loop's state |
 | Creative playground | existing `ImageGenerator` adapter + preset iteration |
-| HTTP surface | new `cmd/server` over the same `orchestrator` API |
+| Browser UI | a local backend API over the same `orchestrator` and store APIs (rebuilt fresh; the earlier `serve`/`internal/server` attempt was discarded) |
+| LLM document analysis (phase 2) | `orchestrator` prompt runs writing `origin: extracted` requirements through `store.RequirementStore` |
+| Agent definitions and test generation (phase 3) | a stateful `AgentAdapter` alongside `provider.TextGenerator`, plus typed entities in `internal/model` |
+| Execution contract and reports (phase 4) | existing `internal/exec` runner and `internal/ingest` mapping, writing into `reports/` |

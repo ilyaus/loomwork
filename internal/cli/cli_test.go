@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ilyaus/loomwork/internal/model"
+	"github.com/ilyaus/loomwork/internal/store"
 )
 
 // exec runs a command line against an isolated workspace and returns stdout.
@@ -121,9 +122,14 @@ func TestProjectAndArtifactVerticalSlice(t *testing.T) {
 		t.Errorf("projects = %+v, want the single created project", projects)
 	}
 
-	// The workspace layout is created under --home.
-	if _, err := os.Stat(filepath.Join(home, "projects", project.ID+".json")); err != nil {
+	// The workspace layout is created under --home: one directory per project.
+	if _, err := os.Stat(filepath.Join(home, "projects", project.ID, store.ProjectFileName)); err != nil {
 		t.Errorf("project document missing: %v", err)
+	}
+	for _, name := range store.ProjectSubdirs() {
+		if _, err := os.Stat(filepath.Join(home, "projects", project.ID, name)); err != nil {
+			t.Errorf("project subfolder %s missing: %v", name, err)
+		}
 	}
 }
 

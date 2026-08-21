@@ -15,15 +15,26 @@ import (
 	"github.com/ilyaus/loomwork/internal/store"
 )
 
-const usage = `loomwork — orchestrate prompts over project artifacts
+const usage = `loomwork — QA workbench: projects, requirements, and prompt runs
 
 Usage:
   loomwork <group> <command> [flags]
 
 Commands:
   project create   --name NAME [--description TEXT] [--tags a,b]
+                   [--source "name=NAME,type=github,url=URL[,local=PATH][,s3=URI]" ...]
   project list
   project show     --project REF
+  project source   --project REF --source "name=NAME,type=ado,url=URL" ...
+  requirement create     --project REF (--text TEXT | --text-file PATH)
+                         [--source-type ado|confluence|github|other] [--source-ref REF]
+                         [--status active|obsolete|superseded] [--origin authored|extracted]
+                         [--tags a,b]
+  requirement list       --project REF [--status STATUS]
+  requirement show       --project REF --requirement ID [--version N | --history]
+  requirement update     --project REF --requirement ID [--text TEXT | --text-file PATH]
+                         [--source-type TYPE] [--source-ref REF] [--tags a,b]
+  requirement set-status --project REF --requirement ID --status STATUS [--version N]
   artifact add     --project REF --name NAME --type TYPE (--content TEXT | --file PATH | --ref PATH) [--tags a,b] [--pin]
   artifact list    --project REF [--all-versions]
   artifact show    --project REF --artifact REF
@@ -40,7 +51,6 @@ Commands:
                    [--dry-run] [--arg VALUE ...] [--timeout SECONDS]
                    [--name NAME] [--tags a,b]
   providers        list configured providers, presets, and credential status
-  serve            [--addr HOST:PORT] start the HTTP API + web UI (default 127.0.0.1:8790)
 
 Global flags (accepted by every command):
   --home PATH   workspace directory (default $LOOMWORK_HOME or ~/.loomwork)
@@ -66,6 +76,15 @@ func Run(args []string, stdout, stderr io.Writer) error {
 			"create": projectCreate,
 			"list":   projectList,
 			"show":   projectShow,
+			"source": projectSource,
+		})
+	case "requirement":
+		return runGroup(rest, stdout, stderr, map[string]commandFunc{
+			"create":     requirementCreate,
+			"list":       requirementList,
+			"show":       requirementShow,
+			"update":     requirementUpdate,
+			"set-status": requirementSetStatus,
 		})
 	case "artifact":
 		return runGroup(rest, stdout, stderr, map[string]commandFunc{
@@ -88,8 +107,6 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		})
 	case "providers":
 		return runCommand(providersList, rest, stdout, stderr)
-	case "serve":
-		return runCommand(serve, rest, stdout, stderr)
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", group, usage)
 	}
@@ -125,7 +142,7 @@ type env struct {
 	home    string
 	paths   config.Paths
 	config  config.Config
-	store   *store.FileStore
+	store   *store.DirStore
 	presets *preset.Registry
 	cues    cuenote.Client
 }
@@ -159,7 +176,7 @@ func (e *env) open() error {
 	}
 	e.presets = presets
 
-	projects, err := store.NewFileStore(e.paths.ProjectsDir)
+	projects, err := store.NewDirStore(e.paths.ProjectsDir)
 	if err != nil {
 		return err
 	}

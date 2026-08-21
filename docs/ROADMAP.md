@@ -1,154 +1,147 @@
 # Roadmap
 
-[`docs/INTENT.md`](INTENT.md) describes *what* Loomwork is meant to become and
-marks each area implemented or deferred. This document sequences the deferred
-areas into independently shippable units of work, in the order that maximizes
-what the next unit can build on.
+[`docs/loom-work-vision.md`](loom-work-vision.md) is the authoritative product
+spec; its phased build plan is the roadmap. This document restates those phases
+with the concrete Loomwork packages, commands, and schemas each one touches, and
+records what already exists.
 
-Each item is scoped to one session, is mergeable on its own, and states the
-extension points it uses so it does not reshape the foundation. An item that
-requires changing a foundation interface says so explicitly — that is the signal
-to review the change carefully rather than absorb it.
+Every phase ships with a **fixed JSON schema for its core artifact, drafted and
+reviewed before implementation** — those schemas are the contract between store,
+browser UI, and any agent or executor integration. They live in
+[`docs/schemas/`](schemas/).
 
-| # | Item | Depends on | Foundation change |
+| Phase | Scope | Core schema | Status |
 |---|---|---|---|
-| 1 | cue-note wiring | — | additive only |
-| 2 | Testing workbench | 1 (optional) | two new packages |
-| 3 | Wiki flow | 1 (optional) | none |
-| 4 | Creative playground | — | none |
-| 5 | Azure / Bedrock adapters | — | none |
-| 6 | HTTP surface (`cmd/server`) | — | none |
+| 1 | Project directory management, document links, requirement CRUD + versioning | [`requirement.schema.json`](schemas/requirement.schema.json) | **done (CLI)** |
+| 2 | LLM document analysis: gap/question lists, requirement extraction | `document-analysis.schema.json` | next |
+| 3 | Agent definitions, override rules, one agent SDK integration, test generation | `agent-definition.schema.json`, `test-case.schema.json` | planned |
+| 4 | Execution contract (local + remote executor), JSON report ingestion, HTML rendering | `execution-report.schema.json`, `executor-config.schema.json` | planned |
+| 5 | Run comparison (pass/fail, latency, structural body delta) and testability dashboard | — (derived views) | planned |
+
+The **browser UI** is the intended primary surface and is built incrementally on
+top of these phases. The earlier `serve`/`initial_ui` HTTP+UI attempt has been
+**discarded and removed from the repository**; the UI will be rebuilt fresh over
+the typed domain entities rather than continued. The CLI remains the reference
+surface, and `internal/orchestrator` stays transport agnostic so the rebuild is a
+handler layer over unchanged domain code.
 
 ---
 
-## 1. cue-note wiring — *done*
+## Phase 1 — project shell and requirements (no LLM calls) — *done for the CLI*
 
-**Why first.** It is the smallest item, the client already exists, and every
-later item wants reusable prompts rather than prompt strings pasted into shell
-history.
+**Deliverable.** A working project shell: projects as directories, document
+source links, and typed requirement CRUD with versioning.
 
-**Scope.** Expose the existing `cuenote.Client` through the CLI: list and show
-cues, and resolve a cue into the prompt for a run.
+**Store.** `store.DirStore` lays each project out per the vision's data model:
 
 ```text
-loomwork cue list [--tag a,b] [--search TEXT] [--limit N]
-loomwork cue show --cue REF
-loomwork run --cue REF [--var key=value ...]   # instead of --prompt/--prompt-file
+<projects-root>/<project-id>/
+  project.json                # name, description, tags, doc source links, index cache
+  requirements/
+    req-001.v1.json           # discrete retrievable snapshot
+    req-001.v2.json           # v1 retained, marked superseded
+    index.json                # current-version pointer per requirement id
+  agent-definitions/          # phase 3
+  test-suites/                # phase 3
+  executor-config/            # phase 4
+  reports/                    # phase 4
 ```
 
-`REF` is a cue id or an exact (case-insensitive) name; an ambiguous name is an
-error rather than a silent pick. `{{var}}` placeholders are rendered from
-`--var`, and an unresolved variable fails the run before any provider call.
-Generated artifacts record `cue` and `cueId` in their metadata.
+Writes are atomic (temp file + rename) and read-modify-write cycles hold a
+directory lock, since every CLI invocation is its own process. Projects written
+by the earlier flat `<project-id>.json` layout are still readable and migrate to
+a directory on first write.
 
-**Extension points.** `cuenote.Client`, `Cue.Render`, and a new additive
-`RunRequest.Metadata` for provenance that the orchestrator merges into the
-generated artifact. No provider, model, or store change.
+**Domain.** `model.Requirement` is a typed entity — deliberately not a
+`model.Artifact` — with id, version, tester-friendly text, `source_type` /
+`source_ref`, status (`active`/`obsolete`/`superseded`), origin
+(`authored`/`extracted`), tags, and metadata. `model.DocumentSource` carries a
+project's links (GitHub/Confluence/ADO/other) plus optional local or S3 copies.
+Obsolete requirements are retained, never deleted; a superseded version's status
+is frozen.
 
-**Done when.** The three commands work against a stub cue-note server; a run
-driven by a cue is indistinguishable from one driven by `--prompt` except for the
-extra metadata; unresolved variables and unreachable cue-note produce actionable
-errors.
-
-## 2. Testing workbench — *done*
-
-**Scope.** Drive [`ilyaus/api-test-runner`](https://github.com/ilyaus/api-test-runner)
-and its `.specify/extensions/sdd-qa` generate→run→analyze→refine loop as chained
-prompt runs:
-
-1. **generate** — prompt-run over an API contract artifact producing Markdown
-   scenarios as `spec` artifacts.
-2. **run** — execute the `api-test-runner` CLI over those scenarios.
-3. **analyze** — prompt-run over the ingested report classifying each failure as
-   harness defect vs. contract drift, producing a `doc` artifact.
-4. **refine** — regenerate only harness-defective scenarios, re-run, keep lineage
-   through artifact parents.
-
-**New packages.** `internal/exec` (a context-aware process runner: argv, working
-directory, environment allowlist, timeout, captured stdout/stderr — no shell) and
-`internal/ingest` (map an `api-test-runner` JSON/CSV report to a `test-result`
-artifact plus a normalized summary).
-
-**Resolutions.** The binary comes from `--runner`, then the `workbench.runnerPath`
-config key, then an `api-test-runner` PATH lookup — never built from a checkout.
-The Lambda path is out of scope; CLI only. The loop is composable: **generate**,
-**analyze**, and **refine** are ordinary `run` invocations (optionally cue-driven),
-while the mechanical step is a dedicated command:
+**CLI.**
 
 ```text
-loomwork workbench run --project REF --scenarios ART[,ART...] --base-url URL \
-    [--runner PATH] [--auth-config PATH | --token-provider-config PATH] \
-    [--dry-run] [--arg VALUE ...] [--timeout SECONDS] [--name NAME] [--tags a,b]
+loomwork project create --name NAME [--source "name=NAME,type=github,url=URL[,local=PATH][,s3=URI]" ...]
+loomwork project source --project REF --source "name=NAME,type=ado,url=URL" ...
+loomwork requirement create     --project REF (--text TEXT | --text-file PATH) \
+                                [--source-type TYPE] [--source-ref REF] [--status STATUS] \
+                                [--origin authored|extracted] [--tags a,b]
+loomwork requirement list       --project REF [--status STATUS]
+loomwork requirement show       --project REF --requirement ID [--version N | --history]
+loomwork requirement update     --project REF --requirement ID [--text TEXT | --text-file PATH]
+loomwork requirement set-status --project REF --requirement ID --status STATUS [--version N]
 ```
 
-Scenario artifacts are materialized into a temp directory, the runner executes
-with an allowlisted environment (`workbench.env`) and a bounded timeout, and its
-stdout JSON report is ingested as a `test-result` artifact whose parent is the
-first scenario artifact, with `outcome`/`total`/`passed`/`failed`/`skipped`/
-`exitCode`/`scenarios` metadata.
+**Remaining in this phase.** Directory-of-projects and requirement views in the
+browser UI, and reading a project by pointing at an existing directory outside
+the workspace root.
 
-**Done when.** A contract artifact can go through all four steps against a stub
-`api-test-runner`, with every intermediate artifact persisted and lineage intact.
+## Phase 2 — LLM-driven document analysis
 
-## 3. Wiki flow
+**Scope.** Analyze a project's document sources with a single provider first,
+producing a QA-readiness assessment plus a list of gaps and open questions, and
+extracting requirements into the phase-1 store. Extraction writes the same
+`Requirement` schema with `origin: extracted` and provenance in `metadata`, so no
+reader changes.
 
-**Scope.** Generate a navigable wiki from a project's artifacts: chunk large
-specs/docs, run a templated prompt chain per chunk, assemble a page tree, and
-regenerate only pages whose source artifacts changed.
+**Also required.** A manual-import path, because QA engineers often perform this
+analysis outside Loomwork.
 
-**Extension points.** A `runner`-style package over `model.Project`,
-`provider.TextGenerator`, and the preset registry, emitting `doc` artifacts.
-Incremental regeneration keys off the source artifact id + version already
-recorded in generated metadata, so no new bookkeeping is required.
+**Extension points.** `provider.TextGenerator`, the preset registry, and
+`store.DirStore.CreateRequirement`. Draft `document-analysis.schema.json` first.
 
-**Open question.** Chunking belongs in a shared package if the workbench also
-needs it for large reports — item 2 landed without one (reports are stored
-verbatim), so chunking can start as a wiki-local concern.
+## Phase 3 — agent definitions, override rules, and test generation
 
-## 4. Creative playground
+**Scope.** Versioned agent-definition Markdown files (`<name>.v3.md` plus a
+`current.json` pointer in `agent-definitions/`), the override-rule schema, and
+one agent SDK integration (Claude Agent SDK first) generating REST API test
+suites into versioned `test-suites/`.
 
-**Scope.** Preset sweeps (same prompt across models/presets, outputs compared
-side by side) and image generation wired into the CLI through the existing
-`provider.ImageGenerator`/`im-gen` adapter, which today has no command. Promote a
-winning output by pinning it.
+**Interface change.** This phase introduces the stateful `AgentAdapter`
+(sessions, tool registration, event streams) **alongside** the existing
+`provider.TextGenerator`, which stays as-is for single-shot generation.
 
-**Extension points.** The preset registry (a sweep is an iteration over preset
-names), the image adapter, and cue-note for storing winning prompts.
+**Highest-risk area.** Override rules must let the agent *reason* about business
+rules that take precedence over the literal OpenAPI spec. Every generated test
+case records `overrides_applied[]` and the requirement ids it covers, so
+misapplication is auditable without reading reasoning transcripts.
 
-**Note.** Sweeps are the first feature that issues concurrent provider calls;
-bound the concurrency and keep the per-run persistence path unchanged (each
-result is an ordinary derived artifact, written through `store.Update`).
+## Phase 4 — execution contract and report ingestion
 
-## 5. Azure AI Foundry and AWS Bedrock adapters
+**Scope.** Loomwork never executes tests. It hands a suite plus a versioned
+executor configuration to a local executable, or uploads to S3 and polls a remote
+run API, then ingests the returned JSON report. Reports are append-only, keyed by
+`(suite_version, run_timestamp)` under `reports/`, and rendered as HTML.
 
-**Scope.** Replace `provider.ErrNotImplemented` in `Generate` with real request
-and response mapping. Constructors, configuration, and credential resolution
-already exist and stay as they are.
+**Existing groundwork.** `internal/exec` (argv-only process runner with an
+environment allowlist and bounded timeout) and `internal/ingest` (report → typed
+result mapping) already exist from the `workbench run` command and are the
+starting point for the local executor path.
 
-**Notes.** Bedrock needs SigV4; implementing it from the standard library is the
-CGO-free choice but is the bulk of the work, so Azure should land first. Keep the
-"drop unsupported parameters rather than invent a mapping" rule — that rule is
-what keeps the normalized `Params` honest.
+## Phase 5 — comparison and testability dashboard
 
-**Done when.** Both adapters generate against their real endpoints, and
-`providers` reports them as configured rather than scaffolded.
-
-## 6. HTTP surface
-
-**Scope.** A `cmd/server` sibling exposing the same operations over HTTP, reusing
-`internal/orchestrator` unchanged — the orchestrator is already transport
-agnostic, so this is a handler layer plus request/response types.
-
-**Caveat.** The store's cross-process lock is directory-wide and its readers
-intentionally bypass it. That is right for a CLI, but a long-lived multi-client
-server should revisit it (per-project locking, or a different store
-implementation behind the existing `ProjectStore` interface) before it becomes a
-throughput or consistency problem.
+**Scope.** Run-to-run and environment-to-environment comparison: pass/fail
+deltas, latency deltas, and **structural** response-body comparison (fields
+missing or unexpected — presence only, never value diffing). Plus the derived
+testability view per project (last-tested outcome, requirements covered,
+requirements with no executed test) rolled up into a directory-of-projects
+landing view.
 
 ---
+
+## Deferred, outside the vision's phases
+
+Wiki generation, the creative playground (preset sweeps, `im-gen` image
+generation, side-by-side comparison), and completing the Azure AI Foundry and AWS
+Bedrock adapters remain planned but are not on the QA-workbench critical path.
+Bedrock needs SigV4; a third-party AWS SDK is now permitted, since the
+standard-library-only rule has been lifted.
 
 ## Not planned
 
-Model hosting or fine-tuning, reimplementing `api-test-runner`/`im-gen`/`cue-note`
-functionality, and multi-tenant concerns (accounts, RBAC, quotas) remain
-non-goals, as stated in [`docs/INTENT.md`](INTENT.md).
+Executing tests inside Loomwork, model hosting or fine-tuning, reimplementing
+`api-test-runner`/`im-gen`/`cue-note` functionality, a relational database, and
+multi-tenant concerns (accounts, RBAC, quotas) remain non-goals, as stated in
+[`docs/INTENT.md`](INTENT.md).

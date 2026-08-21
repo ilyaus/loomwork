@@ -51,9 +51,9 @@ type harness struct {
 
 func newHarness(t *testing.T, generator *fakeGenerator, presets *preset.Registry) *harness {
 	t.Helper()
-	fileStore, err := store.NewFileStore(filepath.Join(t.TempDir(), "projects"))
+	dirStore, err := store.NewDirStore(filepath.Join(t.TempDir(), "projects"))
 	if err != nil {
-		t.Fatalf("NewFileStore: %v", err)
+		t.Fatalf("NewDirStore: %v", err)
 	}
 	project, err := model.NewProject("triage", "", nil)
 	if err != nil {
@@ -65,7 +65,7 @@ func newHarness(t *testing.T, generator *fakeGenerator, presets *preset.Registry
 	if err != nil {
 		t.Fatalf("AddArtifact: %v", err)
 	}
-	if err := fileStore.Create(project); err != nil {
+	if err := dirStore.Create(project); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if presets == nil {
@@ -73,8 +73,8 @@ func newHarness(t *testing.T, generator *fakeGenerator, presets *preset.Registry
 	}
 	factory := func(provider.Config) (provider.TextGenerator, error) { return generator, nil }
 	return &harness{
-		orchestrator: New(config.Config{}, fileStore, presets, factory),
-		store:        fileStore,
+		orchestrator: New(config.Config{}, dirStore, presets, factory),
+		store:        dirStore,
 		generator:    generator,
 		project:      project,
 		target:       target,

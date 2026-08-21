@@ -43,15 +43,7 @@ func ParseArtifactType(raw string) (ArtifactType, error) {
 			return known, nil
 		}
 	}
-	return "", fmt.Errorf("unknown artifact type %q: supported types are %s", raw, joinTypes(ArtifactTypes()))
-}
-
-func joinTypes(types []ArtifactType) string {
-	parts := make([]string, 0, len(types))
-	for _, t := range types {
-		parts = append(parts, string(t))
-	}
-	return strings.Join(parts, ", ")
+	return "", fmt.Errorf("unknown artifact type %q: supported types are %s", raw, joinStrings(ArtifactTypes()))
 }
 
 // Body holds artifact payload: either inline content or an external reference.
