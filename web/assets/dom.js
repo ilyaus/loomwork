@@ -25,8 +25,11 @@ function append(node, children) {
   }
 }
 
-export function clear(node) {
+// render replaces a node's children. Unlike native append it skips nullish
+// children, so a conditional section can be written inline.
+export function render(node, ...children) {
   node.replaceChildren();
+  append(node, children);
   return node;
 }
 

@@ -2,11 +2,12 @@
 // the cached counts in project.json so no project's subfolders are scanned.
 
 import { api } from '../api.js';
-import { clear, commaList, el, field, formValues, tags, timestamp } from '../dom.js';
+import { commaList, el, field, formValues, render, tags, timestamp } from '../dom.js';
 
 export async function renderProjects(view, { navigate, notify }) {
   const projects = await api.listProjects();
-  clear(view).append(
+  render(
+    view,
     el('div', { class: 'crumbs' }, el('h1', { text: 'Projects' }), el('span', { class: 'dim', text: `${projects.length} in this workspace` })),
     el('div', { class: 'cards' }, projects.map((project) => projectCard(project, navigate))),
     projects.length === 0 ? el('p', { class: 'empty', text: 'No projects yet. Create one below.' }) : null,

@@ -3,7 +3,7 @@
 // the whole project context.
 
 import { api } from '../api.js';
-import { badge, clear, commaList, el, field, formValues, select, tags, timestamp } from '../dom.js';
+import { badge, commaList, el, field, formValues, render, select, tags, timestamp } from '../dom.js';
 
 const SOURCE_TYPES = [
   ['ado', 'ado'],
@@ -27,7 +27,8 @@ export async function renderProject(view, ref, { navigate, notify }) {
     }
     const history = state.selected ? await api.requirementHistory(ref, state.selected) : null;
 
-    clear(view).append(
+    render(
+      view,
       el(
         'div',
         { class: 'crumbs' },
