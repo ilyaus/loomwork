@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loomwork — UI prototypes</title>
+<style>
+  body{font:15px/1.6 -apple-system,'Segoe UI',sans-serif;background:#f6f7f9;color:#222;max-width:760px;margin:40px auto;padding:0 20px}
+  h1{font-size:26px}
+  p.sub{color:#667}
+  .card{display:block;background:#fff;border:1px solid #e2e5ea;border-radius:10px;padding:18px 20px;margin:14px 0;text-decoration:none;color:inherit;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card:hover{border-color:#7c6cf5}
+  .card h2{font-size:17px;margin:0 0 4px}
+  .card .k{font-size:12px;color:#7c6cf5;text-transform:uppercase;letter-spacing:1px}
+  .card p{margin:6px 0 0;color:#556;font-size:14px}
+</style>
+</head>
+<body>
+<h1>Loomwork — UI prototypes</h1>
+<p class="sub">Static, self-contained mockups (no build step, mock data only). Open each file directly in a browser.</p>
+
+<a class="card" href="01-console-dark.html">
+  <span class="k">01 · Console</span>
+  <h2>Dark three-pane console (Linear-inspired)</h2>
+  <p>Projects → artifact list → detail. Shows pinning, lineage chain, per-artifact run panel with provider/model/preset/cue selectors, and a run history with statuses.</p>
+</a>
+
+<a class="card" href="02-studio-light.html">
+  <span class="k">02 · Studio</span>
+  <h2>Light document-centric workspace (Notion-inspired)</h2>
+  <p>Artifact-as-page: properties block (type, version, parent, provenance, tags, pinned), content body, inline run box, and a version/run history timeline.</p>
+</a>
+
+<a class="card" href="03-workbench-ide.html">
+  <span class="k">03 · Workbench</span>
+  <h2>IDE-style testing workbench (sdd-qa loop)</h2>
+  <p>Generate → run → analyze → refine stage strip, scenario spec and test-result side by side, loop log terminal, and provider/service status bar.</p>
+</a>
+
+<a class="card" href="04-workbench-app.html">
+  <span class="k">04 · Workbench app — chosen direction</span>
+  <h2>Interactive IDE-style app (extends 03)</h2>
+  <p>Activity rail with four views: workbench loop, artifact browser with lineage navigation, cue-note library, providers &amp; presets. Clickable stages, terminal tabs, and pin/run actions (mocked).</p>
+</a>
+</body>
+</html>

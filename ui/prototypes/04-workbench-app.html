@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loomwork — Workbench app (interactive prototype)</title>
+<style>
+  :root{
+    --bg:#1e2127; --panel:#23272f; --panel2:#282d36; --border:#333945;
+    --text:#d7dae0; --muted:#9099a8; --dim:#616b7d;
+    --blue:#61afef; --green:#98c379; --amber:#e5c07b; --red:#e06c75; --purple:#c678dd; --cyan:#56b6c2;
+    --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,'Segoe UI',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  /* ── title bar ─────────────────────────────── */
+  .titlebar{display:flex;align-items:center;gap:12px;background:var(--panel);border-bottom:1px solid var(--border);padding:7px 14px;font-size:12.5px;flex-shrink:0}
+  .titlebar b{font-weight:600}
+  select.proj{background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:3px 8px}
+  .spacer{flex:1}
+  .env{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  /* ── layout ────────────────────────────────── */
+  .shell{flex:1;display:flex;min-height:0}
+  .rail{width:52px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:4px;flex-shrink:0}
+  .rail button{width:38px;height:38px;border:none;background:transparent;color:var(--dim);font-size:17px;border-radius:8px;cursor:pointer;position:relative}
+  .rail button:hover{background:var(--panel2);color:var(--text)}
+  .rail button.on{background:var(--panel2);color:var(--blue);box-shadow:inset 2px 0 0 var(--blue)}
+  .rail button .tip{display:none;position:absolute;left:46px;top:8px;background:#0f1114;border:1px solid var(--border);border-radius:5px;padding:2px 9px;font-size:11px;white-space:nowrap;color:var(--text);z-index:9}
+  .rail button:hover .tip{display:block}
+  .view{flex:1;display:none;min-width:0;min-height:0;flex-direction:column}
+  .view.on{display:flex}
+  /* ── workbench view ────────────────────────── */
+  .stagebar{display:flex;align-items:center;gap:12px;background:var(--panel);border-bottom:1px solid var(--border);padding:6px 14px}
+  .stage-strip{display:flex;font-size:12px}
+  .stage{padding:4px 14px;border:1px solid var(--border);color:var(--muted);background:var(--panel2);display:flex;gap:7px;align-items:center;cursor:pointer}
+  .stage:first-child{border-radius:6px 0 0 6px}.stage:last-child{border-radius:0 6px 6px 0}
+  .stage.done{color:var(--green)} .stage.active{color:var(--amber);background:#2f2b22;border-color:#5a4d2b}
+  .stage .num{width:16px;height:16px;border-radius:50%;border:1px solid currentColor;font-size:10px;display:flex;align-items:center;justify-content:center}
+  .cols{flex:1;display:grid;grid-template-columns:1fr 1fr;min-height:0}
+  .pane{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+  .pane:last-child{border-right:none}
+  .pane-h{display:flex;align-items:center;gap:8px;background:var(--panel);border-bottom:1px solid var(--border);padding:6px 12px;font-size:11.5px;color:var(--muted)}
+  .tag{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;padding:1px 6px;border-radius:4px;font-weight:600}
+  .tg-spec{background:rgba(198,120,221,.15);color:var(--purple)}
+  .tg-test{background:rgba(229,192,123,.15);color:var(--amber)}
+  .tg-doc{background:rgba(152,195,121,.15);color:var(--green)}
+  .tg-log{background:rgba(144,153,168,.15);color:var(--muted)}
+  .tg-generated{background:rgba(224,108,117,.15);color:var(--red)}
+  .pane-h .v{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .pane-h .act{margin-left:auto;color:var(--blue);cursor:pointer;font-size:11.5px}
+  .code{flex:1;overflow:auto;padding:12px 14px;font:12px/1.65 var(--mono);color:var(--muted);white-space:pre-wrap}
+  .code .h{color:var(--purple)} .code .g{color:var(--green)} .code .r{color:var(--red)} .code .a{color:var(--amber)} .code .b{color:var(--blue)}
+  .row-fail{background:rgba(224,108,117,.08);display:block}
+  .btnbar{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--panel2);flex-wrap:wrap}
+  .btn{font-size:11.5px;padding:4px 12px;border-radius:5px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer}
+  .btn.primary{background:#2c5d87;border-color:#3a76aa;color:#fff}
+  .btn:disabled{opacity:.45;cursor:default}
+  .btn:not(:disabled):hover{filter:brightness(1.2)}
+  /* terminal */
+  .term{height:190px;background:#15171c;display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--border);flex-shrink:0}
+  .term-tabs{display:flex;gap:2px;background:var(--panel);padding:4px 10px 0;border-bottom:1px solid var(--border)}
+  .ttab{font-size:11.5px;padding:4px 12px;color:var(--dim);border-radius:6px 6px 0 0;cursor:pointer}
+  .ttab.on{background:#15171c;color:var(--text)}
+  .term-body{flex:1;overflow:auto;font:11.5px/1.7 var(--mono);padding:10px 14px;color:var(--muted);white-space:pre-wrap}
+  .term-body{display:none}.term-body.on{display:block}
+  .p{color:var(--blue)} .okx{color:var(--green)} .errx{color:var(--red)} .wrn{color:var(--amber)} .dm{color:var(--dim)}
+  /* status bar */
+  .statusbar{display:flex;gap:18px;align-items:center;background:var(--panel);border-top:1px solid var(--border);padding:4px 14px;font-family:var(--mono);font-size:11px;color:var(--dim);flex-shrink:0}
+  .sb-ok{color:var(--green)} .sb-warn{color:var(--amber)}
+  /* ── artifacts view ───────────────────────── */
+  .art-cols{flex:1;display:grid;grid-template-columns:340px 1fr;min-height:0}
+  .art-list{border-right:1px solid var(--border);overflow-y:auto}
+  .alist-head{position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--border);z-index:1}
+  .alist-head input{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:5px 9px}
+  .filters{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .chip{font-size:11px;padding:2px 9px;border-radius:12px;border:1px solid var(--border);color:var(--muted);cursor:pointer}
+  .chip.on{border-color:var(--blue);color:var(--blue)}
+  .art{padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+  .art:hover{background:var(--panel)}
+  .art.sel{background:var(--panel2);box-shadow:inset 2px 0 0 var(--blue)}
+  .art .row1{display:flex;align-items:center;gap:6px}
+  .art .name{font-weight:500;font-size:12.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .art .vv{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .pinmark{color:var(--amber);font-size:11px}
+  .art .meta{font-size:11px;color:var(--dim);margin-top:2px}
+  .art-detail{overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+  .d-head{display:flex;align-items:flex-start;gap:10px}
+  .d-head h1{font-size:16px;font-weight:600}
+  .d-head .sub{color:var(--dim);font-size:11.5px;font-family:var(--mono);margin-top:3px}
+  .lineage{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .lineage .node{border:1px solid var(--border);border-radius:6px;padding:3px 9px;background:var(--panel);cursor:pointer}
+  .lineage .node:hover{border-color:var(--blue)}
+  .lineage .node.cur{border-color:var(--blue);color:var(--text)}
+  .lineage .arr{color:var(--dim)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px}
+  .card h3{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);padding:9px 14px;border-bottom:1px solid var(--border)}
+  .card .body{padding:12px 14px;font:12px/1.65 var(--mono);color:var(--muted);white-space:pre-wrap;max-height:260px;overflow:auto}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:4px 10px;padding:12px 14px;font-size:12px}
+  .kv .k{color:var(--dim)} .kv .val{font-family:var(--mono);font-size:11.5px}
+  /* ── cues view ────────────────────────────── */
+  .cue-cols{flex:1;display:grid;grid-template-columns:320px 1fr;min-height:0}
+  .cue-list{border-right:1px solid var(--border);overflow-y:auto}
+  .cue{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+  .cue:hover{background:var(--panel)} .cue.sel{background:var(--panel2);box-shadow:inset 2px 0 0 var(--purple)}
+  .cue .nm{font-family:var(--mono);font-size:12px;color:var(--text)}
+  .cue .ds{font-size:11px;color:var(--dim);margin-top:2px}
+  .cue-detail{overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+  .varrow{display:flex;gap:8px;align-items:center;padding:4px 14px 12px}
+  .varrow label{font-family:var(--mono);font-size:11.5px;color:var(--amber)}
+  .varrow input{background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;padding:4px 8px}
+  /* ── providers view ───────────────────────── */
+  .prov-wrap{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px;max-width:900px}
+  .prov{display:flex;align-items:center;gap:12px;padding:12px 16px}
+  .prov .st{width:9px;height:9px;border-radius:50%}
+  .st.up{background:var(--green)} .st.idle{background:var(--amber)} .st.off{background:var(--dim)}
+  .prov .nm{font-weight:600;width:120px}
+  .prov .detail2{color:var(--dim);font-family:var(--mono);font-size:11.5px;flex:1}
+  .preset-row{display:flex;gap:8px;align-items:baseline;padding:7px 16px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11.5px}
+  .preset-row .pn{color:var(--purple);width:140px}
+  .preset-row .pv{color:var(--muted)}
+  /* toast */
+  #toast{position:fixed;bottom:46px;right:18px;background:#0f1114;border:1px solid var(--border);border-left:3px solid var(--green);border-radius:6px;padding:9px 14px;font-size:12px;display:none;z-index:20}
+</style>
+</head>
+<body>
+<div class="titlebar">
+  <b>loomwork</b>
+  <select class="proj"><option>sdd-qa-loop</option><option>notes-api-wiki</option><option>im-gen-sweeps</option></select>
+  <span class="spacer"></span>
+  <span class="env">runner: ./bin/api-test-runner · model: ollama/qwen3:8b#code-review · $LOOMWORK_HOME=~/.loomwork</span>
+</div>
+
+<div class="shell">
+  <div class="rail">
+    <button data-view="workbench" class="on">⚗<span class="tip">Workbench</span></button>
+    <button data-view="artifacts">▤<span class="tip">Artifacts</span></button>
+    <button data-view="cues">☰<span class="tip">Cues (cue-note)</span></button>
+    <button data-view="providers">⚙<span class="tip">Providers &amp; presets</span></button>
+  </div>
+
+  <!-- ═════════ WORKBENCH ═════════ -->
+  <div class="view on" id="view-workbench">
+    <div class="stagebar">
+      <span style="font-size:12px;color:var(--dim)">sdd-qa loop</span>
+      <div class="stage-strip" id="stages">
+        <div class="stage done" data-s="0"><span class="num">✓</span> generate</div>
+        <div class="stage done" data-s="1"><span class="num">✓</span> run</div>
+        <div class="stage active" data-s="2"><span class="num">3</span> analyze</div>
+        <div class="stage" data-s="3"><span class="num">4</span> refine</div>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn" onclick="toast('Loop restarted from generate (new lineage branch)')">↺ restart loop</button>
+    </div>
+    <div class="cols">
+      <div class="pane">
+        <div class="pane-h"><span class="tag tg-spec">spec</span> scenarios-notes-crud <span class="v">v4 · art_9f2c · parent: notes-api-contract v3</span><span class="act" onclick="openArtifact('scenarios-notes-crud')">open in artifacts →</span></div>
+        <div class="btnbar">
+          <button class="btn primary" onclick="wbRun()">⚗ workbench run</button>
+          <button class="btn" onclick="toast('run r_79xx queued — cue sdd-qa/generate-scenarios')">regenerate (cue)</button>
+          <button class="btn" onclick="toast('diff view not in prototype')">diff v3…v4</button>
+        </div>
+        <div class="code"><span class="h"># Scenario: Create note group</span>
+<span class="dm">&gt; precondition: auth token &lt;AUTH_ADMIN&gt;</span>
+
+POST /v1/note-groups
+{ "name": "loom-smoke", "tags": ["smoke"] }
+---
+expect 201
+capture <span class="b">$groupId</span> = response.id <span class="a">&lt;uuid&gt;</span>
+
+<span class="h"># Scenario: Update note (missing id)</span>
+<span class="dm">&gt; depends: Create note in group</span>
+
+PATCH /v1/notes/{{<span class="b">$noteId</span>}}
+{ "title": "renamed" }
+---
+expect 200
+<span class="r">▲ $noteId is never captured — harness defect (see analysis)</span>
+
+<span class="h"># Scenario: Delete note group</span>
+DELETE /v1/note-groups/{{<span class="b">$groupId</span>}}
+---
+expect 204</div>
+      </div>
+      <div class="pane">
+        <div class="pane-h"><span class="tag tg-test">test-result</span> run-report-2026-08-08 <span class="v">v1 · art_c7d0 · parent: scenarios-notes-crud v4</span><span class="act" onclick="openArtifact('run-report-2026-08-08')">open in artifacts →</span></div>
+        <div class="btnbar">
+          <button class="btn primary" onclick="toast('run r_80aa started — cue sdd-qa/analyze-failures')">🧠 analyze failures (cue)</button>
+          <button class="btn" onclick="toast('refine queued: regenerating 1 harness-defect scenario')">refine harness defects</button>
+        </div>
+        <div class="code"><span class="g">✓ Create note group………………… 201 in 84ms   ($groupId=b31a…)</span>
+<span class="g">✓ Create note in group……………… 201 in 61ms</span>
+<span class="g">✓ List notes………………………………… 200 in 40ms   (12 items)</span>
+<span class="row-fail"><span class="r">✗ Update note (missing id)……… SKIPPED-DEP  capture $noteId unset</span></span>
+<span class="row-fail"><span class="r">✗ Delete note group……………………… 409 ≠ 204    body: {"error":"group not empty"}</span></span>
+<span class="g">✓ Auth rejection (no token)……… 401 in 12ms</span>
+<span class="dm">… 6 more passing scenarios</span>
+
+<span class="a">summary:</span> 12 scenarios · <span class="g">10 passed</span> · <span class="r">2 failed</span> · DAG order: 3 levels
+<span class="a">analysis (r_77a1 → failure-analysis v2):</span>
+  Update note (missing id) → <span class="wrn">HARNESS_DEFECT</span>  (regenerate scenario)
+  Delete note group        → <span class="r">CONTRACT_DRIFT</span>  (file contract issue)</div>
+      </div>
+    </div>
+    <div class="term">
+      <div class="term-tabs">
+        <span class="ttab on" data-t="loop">loop log</span><span class="ttab" data-t="stdout">runner stdout</span><span class="ttab" data-t="trace">provider trace</span>
+      </div>
+      <div class="term-body on" id="term-loop"><span class="dm">21:12:03</span> <span class="p">loomwork run</span> --cue sdd-qa/generate-scenarios --artifact notes-api-contract --include-pinned
+<span class="dm">21:12:41</span> <span class="okx">✓ generated</span> scenarios-notes-crud v4 (art_9f2c) — ollama/qwen3:8b#code-review, 38.4s, 9.3k tok
+<span class="dm">21:13:02</span> <span class="p">loomwork workbench run</span> --scenario art_9f2c --runner ./bin/api-test-runner
+<span class="dm">21:13:19</span> exec: argv-only, env allowlist [API_BASE_URL, AUTH_ADMIN], timeout 120s … <span class="okx">exit 0 in 16.8s</span>
+<span class="dm">21:13:19</span> <span class="okx">✓ ingested</span> run-report-2026-08-08 v1 (art_c7d0) — 12 scenarios, <span class="errx">2 failed</span>
+<span class="dm">21:14:06</span> <span class="p">loomwork run</span> --cue sdd-qa/analyze-failures --artifact art_c7d0
+<span class="dm">21:14:40</span> <span class="okx">✓ generated</span> failure-analysis v2 (art_b41e) — 1 harness defect, 1 contract drift
+<span class="dm">21:14:40</span> <span class="wrn">next:</span> refine — regenerate only "Update note (missing id)" keeping capture names stable<span class="p">▊</span></div>
+      <div class="term-body" id="term-stdout"><span class="dm">[api-test-runner]</span> parsed 12 scenarios from stdin (markdown AST)
+<span class="dm">[api-test-runner]</span> planned DAG: 3 levels, 2 producer→consumer edges
+<span class="dm">[api-test-runner]</span> level 1: Create note group … <span class="okx">201</span> (capture $groupId=b31a4c…)
+<span class="dm">[api-test-runner]</span> level 2: Create note in group … <span class="okx">201</span>
+<span class="dm">[api-test-runner]</span> level 2: Update note (missing id) … <span class="errx">SKIPPED-DEP</span> ($noteId unset)
+<span class="dm">[api-test-runner]</span> level 3: Delete note group … <span class="errx">409</span> expected 204
+<span class="dm">[api-test-runner]</span> report written to stdout (json), exit 0</div>
+      <div class="term-body" id="term-trace"><span class="dm">POST http://127.0.0.1:11434/api/generate</span>
+model=qwen3:8b preset=#code-review {temperature:0.2, top_p:0.9, num_ctx:16384, repeat_penalty:1.05}
+prompt: 9,312 tokens (artifact art_c7d0 + 3 pinned + cue template sdd-qa/analyze-failures)
+<span class="okx">200</span> in 34.2s · eval 8,102 tok · 236 tok/s prompt, 41 tok/s eval</div>
+    </div>
+  </div>
+
+  <!-- ═════════ ARTIFACTS ═════════ -->
+  <div class="view" id="view-artifacts">
+    <div class="art-cols">
+      <div class="art-list" id="artList">
+        <div class="alist-head">
+          <input placeholder="filter artifacts…  (name, tag, type)">
+          <div class="filters">
+            <span class="chip on">all</span><span class="chip">spec</span><span class="chip">test-result</span><span class="chip">doc</span><span class="chip">log</span><span class="chip">generated</span><span class="chip">📌 pinned</span>
+          </div>
+        </div>
+      </div>
+      <div class="art-detail" id="artDetail"></div>
+    </div>
+  </div>
+
+  <!-- ═════════ CUES ═════════ -->
+  <div class="view" id="view-cues">
+    <div class="cue-cols">
+      <div class="cue-list" id="cueList"></div>
+      <div class="cue-detail" id="cueDetail"></div>
+    </div>
+  </div>
+
+  <!-- ═════════ PROVIDERS ═════════ -->
+  <div class="view" id="view-providers">
+    <div class="prov-wrap">
+      <div class="card">
+        <h3>Providers</h3>
+        <div class="prov"><span class="st up"></span><span class="nm">ollama</span><span class="detail2">http://127.0.0.1:11434 · /api/generate /api/chat /api/tags · 4 models pulled</span><button class="btn">list models</button></div>
+        <div class="prov" style="border-top:1px solid var(--border)"><span class="st idle"></span><span class="nm">lmstudio</span><span class="detail2">http://127.0.0.1:1234/v1 · openai-compatible · idle (no model loaded)</span><button class="btn">list models</button></div>
+        <div class="prov" style="border-top:1px solid var(--border)"><span class="st off"></span><span class="nm">azure</span><span class="detail2">scaffold — config wired, request mapping deferred · AZURE_AI_KEY unset</span><button class="btn" disabled>connect</button></div>
+        <div class="prov" style="border-top:1px solid var(--border)"><span class="st off"></span><span class="nm">bedrock</span><span class="detail2">scaffold — config wired, sigv4 signing deferred · AWS creds unset</span><button class="btn" disabled>connect</button></div>
+        <div class="prov" style="border-top:1px solid var(--border)"><span class="st up"></span><span class="nm">im-gen</span><span class="detail2">http://127.0.0.1:8188 · ImageGenerator: submit → poll → collect</span><button class="btn">jobs</button></div>
+      </div>
+      <div class="card">
+        <h3>Presets · ollama/qwen3:8b</h3>
+        <div class="preset-row"><span class="pn">#default</span><span class="pv">temperature 0.7 · top_p 0.9 · num_ctx 8192</span></div>
+        <div class="preset-row"><span class="pn">#code-review</span><span class="pv">temperature 0.2 · top_p 0.9 · num_ctx 16384 · repeat_penalty 1.05</span></div>
+        <div class="preset-row"><span class="pn">#long-context</span><span class="pv">temperature 0.4 · num_ctx 32768 · max_output 4096</span></div>
+      </div>
+      <div class="card">
+        <h3>Presets · * (provider wildcard defaults)</h3>
+        <div class="preset-row"><span class="pn">#default</span><span class="pv">temperature 0.7 · validated at load · overridden per provider/model</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span class="sb-ok">● ollama :11434 connected</span>
+  <span>lmstudio :1234 <span class="sb-warn">idle</span></span>
+  <span>cue-note :8765 <span class="sb-ok">ok</span></span>
+  <span class="spacer"></span>
+  <span>project sdd-qa-loop · 14 artifacts · 3 pinned</span>
+</div>
+<div id="toast"></div>
+
+<script>
+/* ── mock data ─────────────────────────────── */
+const ARTIFACTS = [
+  {id:'art_11aa', name:'notes-api-contract', type:'spec', v:'v3', pinned:true, parent:null, tags:['api','contract'],
+   meta:'pinned · 41 KB', prov:'imported by user',
+   content:'# Notes API contract (v3)\n\nPOST /v1/note-groups → 201 {id <uuid>, name}\nPOST /v1/note-groups/{id}/notes → 201\nGET  /v1/notes → 200 [..]\nPATCH /v1/notes/{id} → 200\nDELETE /v1/note-groups/{id} → 204 (must be empty? — see drift issue)\n\nAuth: bearer token, entitlements notes:read / notes:write'},
+  {id:'art_22bb', name:'auth-flow-notes', type:'doc', v:'v1', pinned:true, parent:null, tags:['auth'],
+   meta:'pinned · from cue-note · 6 KB', prov:'attached note (cue-note)',
+   content:'Auth notes: admin token via AUTH_ADMIN env; runner injects <AUTH_ADMIN>\nplaceholder at execution time. 401 expected when omitted.'},
+  {id:'art_9f2c', name:'scenarios-notes-crud', type:'spec', v:'v4', pinned:false, parent:'notes-api-contract v3', tags:['sdd-qa'],
+   meta:'generated by run r_79d2', prov:'run r_79d2 · ollama/qwen3:8b#code-review · cue sdd-qa/generate-scenarios',
+   content:'# Scenario: Create note group\n> precondition: auth token <AUTH_ADMIN>\n\nPOST /v1/note-groups\n{ "name": "loom-smoke", "tags": ["smoke"] }\n---\nexpect 201\ncapture $groupId = response.id <uuid>\n\n# Scenario: Update note (missing id)\nPATCH /v1/notes/{{$noteId}}\n---\nexpect 200   ← $noteId never captured (harness defect)'},
+  {id:'art_c7d0', name:'run-report-2026-08-08', type:'test-result', v:'v1', pinned:false, parent:'scenarios-notes-crud v4', tags:['report'],
+   meta:'ingested from api-test-runner · 12 scenarios · 2 failed', prov:'workbench run r_76fe',
+   content:'{ "scenarios": 12, "passed": 10, "failed": 2,\n  "failures": [\n    {"name":"Update note (missing id)","reason":"SKIPPED-DEP $noteId unset"},\n    {"name":"Delete note group","reason":"409 != 204"} ] }'},
+  {id:'art_b41e', name:'failure-analysis', type:'doc', v:'v2', pinned:false, parent:'run-report-2026-08-08 v1', tags:['analysis','sdd-qa'],
+   meta:'generated · 3 versions', prov:'run r_77a1 · ollama/qwen3:8b#code-review · cue sdd-qa/analyze-failures',
+   content:'| scenario                 | class          | evidence                       |\n|--------------------------|----------------|--------------------------------|\n| Update note (missing id) | HARNESS_DEFECT | $noteId never captured         |\n| Delete note group        | CONTRACT_DRIFT | API 409 vs contract 204        |\n\nRecommendation: regenerate harness-defect scenario only.'},
+  {id:'art_d802', name:'runner-stdout', type:'log', v:'v1', pinned:false, parent:null, tags:[],
+   meta:'ref: ./logs/runner-2026-08-08.log', prov:'external reference',
+   content:'(external reference — content stored on disk)\n./logs/runner-2026-08-08.log · 48 KB'},
+  {id:'art_e913', name:'refined-scenarios', type:'generated', v:'v1', pinned:false, parent:'scenarios-notes-crud v4', tags:['sdd-qa'],
+   meta:'generated · refine step', prov:'run r_78b3 · cue sdd-qa/refine-scenarios',
+   content:'# Scenario: Update note (fixed)\n> depends: Create note in group\ncapture $noteId = response.id <uuid>   ← capture added\nPATCH /v1/notes/{{$noteId}}\n---\nexpect 200'},
+];
+const LINEAGE = ['notes-api-contract','scenarios-notes-crud','run-report-2026-08-08','failure-analysis'];
+const CUES = [
+  {ref:'sdd-qa/generate-scenarios', desc:'Contract artifact → Markdown test scenarios', vars:['contract_name'],
+   body:'You are generating api-test-runner Markdown scenarios.\nContract: {{contract_name}}\n\nRules:\n- one scenario per endpoint behavior\n- use capture $var = response.field <type> for producer steps\n- declare "> depends:" for consumer steps\n- assert with semantic patterns (<uuid>, <present_string>)'},
+  {ref:'sdd-qa/analyze-failures', desc:'Test report → HARNESS_DEFECT / CONTRACT_DRIFT table', vars:[],
+   body:'Classify each failed scenario in the attached report as\nHARNESS_DEFECT or CONTRACT_DRIFT.\nOutput a table: scenario | class | evidence.\nEnd with a one-line recommendation.'},
+  {ref:'sdd-qa/refine-scenarios', desc:'Regenerate only harness-defective scenarios', vars:['keep_captures'],
+   body:'Regenerate ONLY the scenarios classified HARNESS_DEFECT.\nKeep ids and capture names stable ({{keep_captures}}).\nDo not touch passing or CONTRACT_DRIFT scenarios.'},
+  {ref:'wiki/summarize-chunk', desc:'Spec chunk → wiki page section', vars:['audience'],
+   body:'Summarize this spec chunk for a {{audience}} audience as a wiki\nsection with heading, overview, and API table.'},
+];
+
+/* ── view switching ────────────────────────── */
+document.querySelectorAll('.rail button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.rail button').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    document.getElementById('view-'+b.dataset.view).classList.add('on');
+  };
+});
+/* terminal tabs */
+document.querySelectorAll('.ttab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.ttab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.term-body').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    document.getElementById('term-'+t.dataset.t).classList.add('on');
+  };
+});
+/* stages */
+document.querySelectorAll('#stages .stage').forEach(s=>{
+  s.onclick=()=>{
+    const i=+s.dataset.s;
+    document.querySelectorAll('#stages .stage').forEach((x,j)=>{
+      x.classList.toggle('done', j<i);
+      x.classList.toggle('active', j===i);
+    });
+    toast('Focused stage: '+s.textContent.trim());
+  };
+});
+
+/* ── artifacts view ────────────────────────── */
+const list=document.getElementById('artList');
+ARTIFACTS.forEach((a,i)=>{
+  const d=document.createElement('div');
+  d.className='art'; d.dataset.name=a.name;
+  d.innerHTML=`<div class="row1">${a.pinned?'<span class="pinmark">📌</span>':''}<span class="name">${a.name}</span><span class="tag tg-${a.type}">${a.type}</span><span class="vv">${a.v}</span></div><div class="meta">${a.meta}</div>`;
+  d.onclick=()=>selectArtifact(a.name);
+  list.appendChild(d);
+});
+function selectArtifact(name){
+  const a=ARTIFACTS.find(x=>x.name===name);
+  document.querySelectorAll('#artList .art').forEach(x=>x.classList.toggle('sel',x.dataset.name===name));
+  const lineage = LINEAGE.includes(name)
+    ? `<div class="lineage">${LINEAGE.map(n=>`<span class="node${n===name?' cur':''}" onclick="selectArtifact('${n}')">${n}</span>`).join('<span class="arr">→</span>')}</div>`
+    : (a.parent?`<div class="lineage"><span class="node">${a.parent}</span><span class="arr">→</span><span class="node cur">${a.name} ${a.v}</span></div>`:'');
+  document.getElementById('artDetail').innerHTML=`
+    <div class="d-head">
+      <div style="flex:1"><h1>${a.name} <span style="font-family:var(--mono);font-size:11px;color:var(--dim)">${a.v} · ${a.id}</span></h1>
+      <div class="sub">${a.prov}</div></div>
+      <button class="btn" onclick="toast('${a.pinned?'Unpinned':'Pinned'} ${a.name} — standing context updated')">${a.pinned?'📌 Unpin':'📌 Pin'}</button>
+      <button class="btn primary" onclick="toast('Run panel would open (see workbench view)')">▶ Run prompt</button>
+    </div>
+    ${lineage}
+    <div class="card"><h3>Properties</h3><div class="kv">
+      <span class="k">type</span><span class="val">${a.type}</span>
+      <span class="k">version</span><span class="val">${a.v}</span>
+      <span class="k">pinned</span><span class="val">${a.pinned?'yes — included with --include-pinned':'no'}</span>
+      <span class="k">parent</span><span class="val">${a.parent??'—'}</span>
+      <span class="k">tags</span><span class="val">${a.tags.join(', ')||'—'}</span>
+    </div></div>
+    <div class="card"><h3>Content</h3><div class="body">${a.content.replace(/</g,'&lt;')}</div></div>`;
+}
+selectArtifact('scenarios-notes-crud');
+function openArtifact(name){
+  document.querySelector('.rail button[data-view=artifacts]').click();
+  selectArtifact(name);
+}
+
+/* ── cues view ─────────────────────────────── */
+const cl=document.getElementById('cueList');
+CUES.forEach(c=>{
+  const d=document.createElement('div');
+  d.className='cue'; d.dataset.ref=c.ref;
+  d.innerHTML=`<div class="nm">${c.ref}</div><div class="ds">${c.desc}</div>`;
+  d.onclick=()=>selectCue(c.ref);
+  cl.appendChild(d);
+});
+function selectCue(ref){
+  const c=CUES.find(x=>x.ref===ref);
+  document.querySelectorAll('#cueList .cue').forEach(x=>x.classList.toggle('sel',x.dataset.ref===ref));
+  document.getElementById('cueDetail').innerHTML=`
+    <div class="d-head"><div style="flex:1"><h1 style="font-family:var(--mono);font-size:15px">${c.ref}</h1>
+    <div class="sub">system of record: cue-note :8765 · read-only here</div></div>
+    <button class="btn primary" onclick="toast('loomwork run --cue ${c.ref} … (would prompt for artifact)')">▶ Run with cue</button></div>
+    <div class="card"><h3>Template</h3><div class="body">${c.body.replace(/</g,'&lt;')}</div></div>
+    ${c.vars.length?`<div class="card"><h3>Variables ({{var}} → --var key=value)</h3>${c.vars.map(v=>`<div class="varrow"><label>{{${v}}}</label><input placeholder="value for ${v}"></div>`).join('')}</div>`:''}`;
+}
+selectCue('sdd-qa/analyze-failures');
+
+/* ── misc ──────────────────────────────────── */
+function wbRun(){
+  toast('workbench run started — exec ./bin/api-test-runner (argv-only, 120s timeout)');
+  const t=document.getElementById('term-loop');
+  t.innerHTML+=`\n<span class="dm">now</span> <span class="p">loomwork workbench run</span> --scenario art_9f2c --runner ./bin/api-test-runner <span class="wrn">… running</span>`;
+  t.scrollTop=t.scrollHeight;
+}
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2600);
+}
+</script>
+</body>
+</html>

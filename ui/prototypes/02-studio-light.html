@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loomwork — Studio (light, document-centric)</title>
+<style>
+  :root{
+    --bg:#fafaf8; --panel:#ffffff; --border:#e7e5e0; --border2:#d9d6cf;
+    --text:#37352f; --muted:#787670; --dim:#a8a49c;
+    --accent:#2f6fed; --green:#2e9e6b; --amber:#c98a1b; --red:#d4494f;
+    --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,'Segoe UI',Georgia,serif;height:100vh;display:flex;overflow:hidden}
+  aside{width:250px;background:#f4f3ef;border-right:1px solid var(--border);padding:16px 10px;overflow-y:auto;font-family:-apple-system,'Segoe UI',sans-serif}
+  .ws{display:flex;align-items:center;gap:8px;padding:4px 10px 14px;font-weight:600;font-size:14px}
+  .ws .sq{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#2f6fed,#7c6cf5);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px}
+  .sec{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);padding:10px 10px 4px}
+  .it{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;font-size:13px;color:var(--muted);cursor:pointer}
+  .it:hover{background:#ebe9e4}
+  .it.on{background:#e8e6e1;color:var(--text);font-weight:500}
+  .it .cnt{margin-left:auto;font-size:11px;color:var(--dim)}
+  main{flex:1;overflow-y:auto}
+  .page{max-width:820px;margin:0 auto;padding:44px 40px 80px}
+  .icon{font-size:44px}
+  h1{font-size:32px;font-weight:700;margin:8px 0 2px;letter-spacing:-.5px}
+  .props{margin:18px 0 6px;font-family:-apple-system,'Segoe UI',sans-serif;font-size:13px}
+  .prop{display:flex;gap:14px;padding:4px 0;align-items:center}
+  .prop .k{width:130px;color:var(--dim);display:flex;gap:6px;align-items:center}
+  .pill{display:inline-block;padding:1px 9px;border-radius:4px;font-size:12px;font-weight:500}
+  .p-spec{background:#e8e2fb;color:#5b47c4}.p-doc{background:#dcf2e7;color:#1f7a4f}
+  .p-test{background:#faeed7;color:#9a6c12}.p-gen{background:#fbe3e4;color:#b13338}
+  .tagx{border:1px solid var(--border);border-radius:4px;padding:0 7px;font-size:12px;color:var(--muted);margin-right:4px;background:#efede8}
+  .mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  hr{border:none;border-top:1px solid var(--border);margin:20px 0}
+  .callout{display:flex;gap:10px;background:#f4f3ef;border-radius:8px;padding:12px 14px;font-family:-apple-system,'Segoe UI',sans-serif;font-size:13px;color:var(--muted);margin:14px 0}
+  .callout b{color:var(--text)}
+  h2{font-family:-apple-system,'Segoe UI',sans-serif;font-size:18px;margin:26px 0 10px;font-weight:650}
+  .doc{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px 20px;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:#4a4842;white-space:pre-wrap}
+  .runbox{background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:16px;font-family:-apple-system,'Segoe UI',sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .runrow{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .selc{border:1px solid var(--border2);border-radius:6px;padding:6px 10px;font-size:13px;background:#fff;color:var(--text)}
+  textarea{width:100%;border:1px solid var(--border2);border-radius:8px;padding:10px 12px;font:13px/1.6 -apple-system,'Segoe UI',sans-serif;resize:vertical;min-height:70px;color:var(--text)}
+  .btn{border:none;background:var(--accent);color:#fff;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:500;cursor:pointer}
+  .btn.ghost{background:#fff;color:var(--muted);border:1px solid var(--border2)}
+  .foot{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:var(--dim)}
+  .timeline{font-family:-apple-system,'Segoe UI',sans-serif;margin-top:6px}
+  .tl{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;align-items:baseline}
+  .tl:last-child{border:none}
+  .tl .when{width:92px;color:var(--dim);font-size:12px;flex-shrink:0}
+  .tl .what b{font-weight:600}
+  .tl .what .mono{font-size:11.5px}
+  .st{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .ok{background:var(--green)}.bad{background:var(--red)}
+  .breadcrumbs{font-family:-apple-system,'Segoe UI',sans-serif;font-size:13px;color:var(--dim);padding:14px 40px 0;max-width:820px;margin:0 auto}
+  .breadcrumbs a{color:var(--muted);text-decoration:none}
+  .breadcrumbs a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<aside>
+  <div class="ws"><span class="sq">L</span> Loomwork</div>
+  <div class="sec">Projects</div>
+  <div class="it on">📁 sdd-qa-loop <span class="cnt">14</span></div>
+  <div class="it">📁 notes-api-wiki <span class="cnt">31</span></div>
+  <div class="it">📁 im-gen-sweeps <span class="cnt">7</span></div>
+  <div class="sec">sdd-qa-loop</div>
+  <div class="it">📌 Pinned context <span class="cnt">3</span></div>
+  <div class="it">🧾 notes-api-contract</div>
+  <div class="it on" style="padding-left:22px">📄 failure-analysis</div>
+  <div class="it" style="padding-left:22px">🧪 run-report-2026-08-08</div>
+  <div class="it" style="padding-left:22px">🧵 scenarios-notes-crud</div>
+  <div class="it">⚗ Workbench runs</div>
+  <div class="sec">Library</div>
+  <div class="it">☰ Cues (cue-note) <span class="cnt">12</span></div>
+  <div class="it">⚙ Providers &amp; presets</div>
+</aside>
+<main>
+  <div class="breadcrumbs"><a href="#">sdd-qa-loop</a> / <a href="#">run-report-2026-08-08</a> / failure-analysis</div>
+  <div class="page">
+    <div class="icon">📄</div>
+    <h1>failure-analysis</h1>
+    <div class="props">
+      <div class="prop"><span class="k">⬦ Type</span><span class="pill p-doc">doc</span></div>
+      <div class="prop"><span class="k"># Version</span><span>v2 <span class="mono">· art_b41e · 3 versions</span></span></div>
+      <div class="prop"><span class="k">↳ Parent</span><span>run-report-2026-08-08 <span class="mono">v1</span> <span class="pill p-test">test-result</span></span></div>
+      <div class="prop"><span class="k">✨ Provenance</span><span class="mono">run r_77a1 · ollama/qwen3:8b#code-review · cue sdd-qa/analyze-failures</span></div>
+      <div class="prop"><span class="k">🏷 Tags</span><span><span class="tagx">analysis</span><span class="tagx">sdd-qa</span></span></div>
+      <div class="prop"><span class="k">📌 Pinned</span><span class="mono">no · <a href="#" style="color:var(--accent)">pin as standing context</a></span></div>
+    </div>
+    <div class="callout">💡 <span>This artifact was <b>generated, not written</b> — runs never mutate inputs. Editing creates <b>v3</b> with this version as parent.</span></div>
+    <hr>
+    <h2>Content</h2>
+    <div class="doc">## Failure classification — run-report-2026-08-08
+
+| scenario                | class           | evidence                                  |
+|-------------------------|-----------------|-------------------------------------------|
+| Update note (missing id)| HARNESS_DEFECT  | capture $noteId never set: step 3 skipped |
+| Delete note group       | CONTRACT_DRIFT  | API returns 409, contract documents 204   |
+
+Recommendation: regenerate "Update note" scenario only (harness defect);
+open contract issue for DELETE /v1/note-groups/{id} status code drift.</div>
+    <h2>Run a prompt over this artifact</h2>
+    <div class="runbox">
+      <div class="runrow">
+        <select class="selc"><option>ollama / qwen3:8b</option><option>lmstudio / llama-3.1-8b</option></select>
+        <select class="selc"><option>#code-review</option><option>#default</option><option>#long-context</option></select>
+        <select class="selc"><option>Cue: sdd-qa/refine-scenarios</option><option>Cue: — none —</option></select>
+        <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px"><input type="checkbox" checked> include pinned (3)</label>
+      </div>
+      <textarea>Regenerate only the scenarios classified HARNESS_DEFECT, keeping ids and capture names stable.</textarea>
+      <div class="foot">
+        <button class="btn">Run → new artifact</button>
+        <button class="btn ghost">Dry run</button>
+        <span>result parent: <span class="mono">art_b41e v2</span></span>
+      </div>
+    </div>
+    <h2>History</h2>
+    <div class="timeline">
+      <div class="tl"><span class="when">today 21:14</span><div class="what"><span class="st ok"></span><b>v2 generated</b> by run <span class="mono">r_77a1</span> — ollama/qwen3:8b#code-review, 34.2s, 8.1k tok</div></div>
+      <div class="tl"><span class="when">today 20:52</span><div class="what"><span class="st bad"></span><b>run r_75c0 failed</b> — lmstudio/llama-3.1-8b timeout after 120s (no artifact written)</div></div>
+      <div class="tl"><span class="when">today 20:31</span><div class="what"><span class="st ok"></span><b>v1 generated</b> by run <span class="mono">r_74d9</span> over run-report-2026-08-08 v1</div></div>
+      <div class="tl"><span class="when">today 20:30</span><div class="what"><span class="st ok"></span><b>parent ingested</b> — workbench run of api-test-runner: 12 scenarios, 2 failed</div></div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

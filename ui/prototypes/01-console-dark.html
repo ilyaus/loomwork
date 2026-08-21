@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loomwork — Console (dark)</title>
+<style>
+  :root{
+    --bg:#0d0f13; --panel:#12151b; --panel2:#171b23; --border:#232936;
+    --text:#e6e9ef; --muted:#8b93a5; --dim:#5b6373;
+    --accent:#7c6cf5; --accent2:#4fc3a1; --warn:#e5b567; --err:#e0646c;
+    --pin:#e5b567;
+    --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,'Segoe UI',Inter,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:14px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .logo{font-weight:700;letter-spacing:.5px}
+  .logo span{color:var(--accent)}
+  .crumb{color:var(--muted);font-size:12px}
+  .crumb b{color:var(--text);font-weight:500}
+  .spacer{flex:1}
+  .kbd{font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--border);border-radius:4px;padding:1px 6px}
+  .provider-pill{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 10px;background:var(--panel2)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--accent2)}
+  main{flex:1;display:grid;grid-template-columns:210px 320px 1fr;min-height:0}
+  main>*{min-height:0;overflow-y:auto}
+  nav{background:var(--panel);border-right:1px solid var(--border);padding:12px 8px}
+  .nav-h{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);padding:6px 10px}
+  .nav-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:12.5px}
+  .nav-item:hover{background:var(--panel2);color:var(--text)}
+  .nav-item.active{background:rgba(124,108,245,.14);color:var(--text)}
+  .nav-item .n{margin-left:auto;font-size:11px;color:var(--dim)}
+  .tag{display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;border:1px solid var(--border);color:var(--muted);margin-right:4px}
+  /* artifact list */
+  .list{background:var(--bg);border-right:1px solid var(--border)}
+  .list-head{position:sticky;top:0;background:var(--bg);padding:12px 14px 8px;border-bottom:1px solid var(--border);z-index:1}
+  .list-head h2{font-size:13px;font-weight:600}
+  .filters{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .chip{font-size:11px;padding:2px 9px;border-radius:12px;border:1px solid var(--border);color:var(--muted);cursor:pointer}
+  .chip.on{border-color:var(--accent);color:var(--accent)}
+  .art{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+  .art:hover{background:var(--panel)}
+  .art.sel{background:var(--panel2);box-shadow:inset 2px 0 0 var(--accent)}
+  .art .row1{display:flex;align-items:center;gap:6px}
+  .art .name{font-weight:500;font-size:12.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .art .v{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .pin{color:var(--pin);font-size:11px}
+  .atype{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;padding:1px 6px;border-radius:4px;font-weight:600}
+  .t-spec{background:rgba(124,108,245,.15);color:#a99ef8}
+  .t-log{background:rgba(139,147,165,.15);color:var(--muted)}
+  .t-test-result{background:rgba(229,181,103,.15);color:var(--warn)}
+  .t-doc{background:rgba(79,195,161,.15);color:var(--accent2)}
+  .t-generated{background:rgba(224,100,108,.15);color:var(--err)}
+  .art .meta{font-size:11px;color:var(--dim);margin-top:3px}
+  /* detail */
+  .detail{padding:18px 22px;display:flex;flex-direction:column;gap:16px}
+  .d-head{display:flex;align-items:flex-start;gap:10px}
+  .d-head h1{font-size:17px;font-weight:600}
+  .d-head .sub{color:var(--muted);font-size:12px;margin-top:3px}
+  .btn{font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--panel2);color:var(--text);cursor:pointer}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+  .btn:hover{filter:brightness(1.15)}
+  .lineage{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .lineage .node{border:1px solid var(--border);border-radius:6px;padding:3px 9px;background:var(--panel)}
+  .lineage .node.cur{border-color:var(--accent);color:var(--text)}
+  .lineage .arr{color:var(--dim)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px}
+  .card h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);padding:10px 14px;border-bottom:1px solid var(--border)}
+  .content{font-family:var(--mono);font-size:12px;color:var(--muted);padding:14px;white-space:pre-wrap;max-height:230px;overflow:auto}
+  .runbar{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;padding:14px;align-items:end}
+  .field label{display:block;font-size:10.5px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+  select,input[type=text]{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 8px}
+  .prompt-row{padding:0 14px 14px}
+  textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font:12px/1.5 var(--mono);padding:10px;resize:vertical;min-height:64px}
+  .hint{font-size:11px;color:var(--dim);padding:0 14px 12px}
+  .hint code{font-family:var(--mono);color:var(--muted)}
+  .runs{padding:0}
+  .run{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px}
+  .run:last-child{border-bottom:none}
+  .run .st{width:8px;height:8px;border-radius:50%}
+  .ok{background:var(--accent2)} .bad{background:var(--err)} .running{background:var(--warn);animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.4}}
+  .run .m{font-family:var(--mono);color:var(--muted);font-size:11px}
+  .run .out{margin-left:auto;color:var(--accent);cursor:pointer;font-size:11.5px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">loom<span>work</span></div>
+  <div class="crumb">projects / <b>sdd-qa-loop</b></div>
+  <div class="spacer"></div>
+  <span class="kbd">⌘K</span>
+  <div class="provider-pill"><span class="dot"></span> ollama · qwen3:8b <span style="color:var(--dim)">#code-review</span></div>
+</header>
+<main>
+  <nav>
+    <div class="nav-h">Projects</div>
+    <div class="nav-item active">◈ sdd-qa-loop <span class="n">14</span></div>
+    <div class="nav-item">◈ notes-api-wiki <span class="n">31</span></div>
+    <div class="nav-item">◈ im-gen-sweeps <span class="n">7</span></div>
+    <div class="nav-h" style="margin-top:14px">Views</div>
+    <div class="nav-item">▤ All artifacts</div>
+    <div class="nav-item">📌 Pinned <span class="n">3</span></div>
+    <div class="nav-item">⟲ Recent runs</div>
+    <div class="nav-item">⚗ Workbench</div>
+    <div class="nav-h" style="margin-top:14px">Cues</div>
+    <div class="nav-item">☰ cue-note library <span class="n">12</span></div>
+  </nav>
+
+  <section class="list">
+    <div class="list-head">
+      <h2>Artifacts · sdd-qa-loop</h2>
+      <div class="filters">
+        <span class="chip on">all</span><span class="chip">spec</span><span class="chip">test-result</span>
+        <span class="chip">doc</span><span class="chip">generated</span><span class="chip">📌 pinned</span>
+      </div>
+    </div>
+    <div class="art">
+      <div class="row1"><span class="pin">📌</span><span class="name">notes-api-contract</span><span class="atype t-spec">spec</span><span class="v">v3</span></div>
+      <div class="meta">pinned · 41 KB · tags: <span class="tag">api</span><span class="tag">contract</span></div>
+    </div>
+    <div class="art">
+      <div class="row1"><span class="pin">📌</span><span class="name">auth-flow-notes</span><span class="atype t-doc">doc</span><span class="v">v1</span></div>
+      <div class="meta">pinned · from cue-note · 6 KB</div>
+    </div>
+    <div class="art sel">
+      <div class="row1"><span class="name">scenarios-notes-crud</span><span class="atype t-spec">spec</span><span class="v">v4</span></div>
+      <div class="meta">generated by run · parent: notes-api-contract v3</div>
+    </div>
+    <div class="art">
+      <div class="row1"><span class="name">run-report-2026-08-08</span><span class="atype t-test-result">test-result</span><span class="v">v1</span></div>
+      <div class="meta">ingested from api-test-runner · 12 scenarios · 2 failed</div>
+    </div>
+    <div class="art">
+      <div class="row1"><span class="name">failure-analysis</span><span class="atype t-doc">doc</span><span class="v">v2</span></div>
+      <div class="meta">generated · parent: run-report-2026-08-08 v1</div>
+    </div>
+    <div class="art">
+      <div class="row1"><span class="name">runner-stdout</span><span class="atype t-log">log</span><span class="v">v1</span></div>
+      <div class="meta">ref: ./logs/runner-2026-08-08.log</div>
+    </div>
+    <div class="art">
+      <div class="row1"><span class="name">refined-scenarios</span><span class="atype t-generated">generated</span><span class="v">v1</span></div>
+      <div class="meta">generated · parent: scenarios-notes-crud v4</div>
+    </div>
+  </section>
+
+  <section class="detail">
+    <div class="d-head">
+      <div style="flex:1">
+        <h1>scenarios-notes-crud <span style="font-family:var(--mono);font-size:12px;color:var(--dim)">v4 · art_9f2c</span></h1>
+        <div class="sub">spec · created 2026-08-08 21:14 · provenance: run r_77a1 · cue: <code style="font-family:var(--mono)">sdd-qa/generate-scenarios</code></div>
+      </div>
+      <button class="btn">📌 Pin</button>
+      <button class="btn">History (4)</button>
+      <button class="btn primary">▶ Run prompt</button>
+    </div>
+
+    <div class="lineage">
+      <span class="node">notes-api-contract v3</span><span class="arr">→</span>
+      <span class="node cur">scenarios-notes-crud v4</span><span class="arr">→</span>
+      <span class="node">run-report-2026-08-08 v1</span><span class="arr">→</span>
+      <span class="node">failure-analysis v2</span>
+    </div>
+
+    <div class="card">
+      <h3>Content · Markdown scenarios</h3>
+      <div class="content"># Scenario: Create note group
+> precondition: auth token &lt;AUTH_ADMIN&gt;
+
+POST /v1/note-groups
+{ "name": "loom-smoke", "tags": ["smoke"] }
+
+---
+expect 201
+capture $groupId = response.id &lt;uuid&gt;
+
+# Scenario: Create note in group
+> depends: Create note group
+
+POST /v1/note-groups/{{$groupId}}/notes
+{ "title": "hello", "body": "&lt;present_string&gt;" }
+---
+expect 201</div>
+    </div>
+
+    <div class="card">
+      <h3>New prompt run</h3>
+      <div class="runbar">
+        <div class="field"><label>Provider / model</label>
+          <select><option>ollama / qwen3:8b</option><option>lmstudio / llama-3.1-8b</option><option disabled>azure / gpt-4o (scaffold)</option><option disabled>bedrock / claude (scaffold)</option></select></div>
+        <div class="field"><label>Preset</label>
+          <select><option>#code-review</option><option>#default</option><option>#long-context</option></select></div>
+        <div class="field"><label>Cue (optional)</label>
+          <select><option>— none —</option><option>sdd-qa/generate-scenarios</option><option>sdd-qa/analyze-failures</option><option>sdd-qa/refine-scenarios</option></select></div>
+        <button class="btn primary">Run</button>
+      </div>
+      <div class="prompt-row"><textarea>Classify each failed scenario in the attached report as HARNESS_DEFECT or CONTRACT_DRIFT. Output a table with scenario, class, evidence.</textarea></div>
+      <div class="hint">Context: this artifact + <code>--include-pinned</code> (3 pinned) · result stored as new versioned artifact with parent <code>art_9f2c</code></div>
+    </div>
+
+    <div class="card">
+      <h3>Recent runs on this artifact</h3>
+      <div class="runs">
+        <div class="run"><span class="st ok"></span> r_77a1 · <span class="m">ollama/qwen3:8b#code-review</span> · 34.2s · 8.1k tok <span class="out">→ failure-analysis v2</span></div>
+        <div class="run"><span class="st ok"></span> r_76fe · <span class="m">workbench run · api-test-runner</span> · 12 scenarios, 2 failed <span class="out">→ run-report-2026-08-08 v1</span></div>
+        <div class="run"><span class="st bad"></span> r_75c0 · <span class="m">lmstudio/llama-3.1-8b#default</span> · provider timeout (120s) <span class="out">retry</span></div>
+        <div class="run"><span class="st running"></span> r_78b3 · <span class="m">ollama/qwen3:8b#long-context</span> · running 12s…</div>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>
