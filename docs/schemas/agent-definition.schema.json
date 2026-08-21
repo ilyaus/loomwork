@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ilyaus/loomwork/docs/schemas/agent-definition.schema.json",
+  "title": "AgentDefinition",
+  "description": "One immutable version of an agent definition: the frontmatter of agent-definitions/<agent_name>.v<version>.md plus its markdown body. An agent definition is a configuration artifact, not just a prompt: it declares which provider backend runs it and which normalized tools it may call. This document is the contract between the store, the browser UI, and the agent adapter layer. Override rules and the current-version pointer manifest that live in the same folder are defined under $defs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent_name", "version", "target_provider", "body", "created_at"],
+  "properties": {
+    "agent_name": {
+      "type": "string",
+      "description": "Agent identity, stable across versions, and the file-name stem of every version.",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Version of this snapshot, starting at 1. Every version is retained as a discrete file; the active one is named by current.json.",
+      "minimum": 1
+    },
+    "target_provider": {
+      "type": "string",
+      "description": "Agent adapter backend that runs this definition. Values name adapters in internal/provider, not models.",
+      "enum": ["claude-agent-sdk", "copilot-sdk"]
+    },
+    "model": {
+      "type": "string",
+      "description": "Backend model the adapter should ask for. Absent means the adapter default."
+    },
+    "tools_allowed": {
+      "type": "array",
+      "description": "Normalized tool names this agent may call. The adapter layer maps them onto each backend's tool-calling shape, so a definition is portable across backends.",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_]*$" },
+      "uniqueItems": true
+    },
+    "body": {
+      "type": "string",
+      "description": "Markdown instructions below the frontmatter: role, override-rule handling, inputs. Sent to the backend as the agent's system prompt.",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "description": "One-line summary for list views."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Non-semantic annotations (author, imported-from, prompt digest).",
+      "additionalProperties": { "type": "string" }
+    },
+    "created_at": {
+      "type": "string",
+      "description": "When this version was written (UTC, RFC 3339).",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "override_rule": {
+      "title": "OverrideRule",
+      "description": "One immutable version of an override rule, stored as agent-definitions/override-rules/<id>.v<version>.json. The shape is deliberately hybrid (see the open question in docs/loom-work-vision.md): condition/action carry structured metadata so a post-generation audit can deterministically decide which tests a rule should have shaped, while rationale carries the free-text guidance the agent reasons over. Neither half is optional, because the agent must understand intent and the workbench must be able to check the result.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "title", "condition", "action", "rationale", "status", "created_at"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Rule identity, stable across versions. Tests cite a specific version as \"<id>-v<version>\" in overrides_applied.",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "version": { "type": "integer", "minimum": 1 },
+        "title": {
+          "type": "string",
+          "description": "Short human label, e.g. \"Missing item returns an empty list\".",
+          "minLength": 1
+        },
+        "condition": {
+          "type": "object",
+          "description": "When the rule applies. Every present field must match for the rule to be considered applicable; an absent field matches anything, so an empty condition applies to the whole suite.",
+          "additionalProperties": false,
+          "properties": {
+            "methods": {
+              "type": "array",
+              "description": "HTTP methods the rule applies to.",
+              "items": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] },
+              "uniqueItems": true
+            },
+            "path_pattern": {
+              "type": "string",
+              "description": "Glob over the request path, e.g. \"/orders/*\". Matched against the test case's request path.",
+              "minLength": 1
+            },
+            "scenario": {
+              "type": "string",
+              "description": "Test intent the rule governs. Scenario names are a closed set so rules and generated tests can be matched mechanically rather than by prose similarity.",
+              "enum": [
+                "happy-path",
+                "missing-item",
+                "invalid-input",
+                "missing-authentication",
+                "unauthorized",
+                "conflict",
+                "rate-limit",
+                "server-error",
+                "other"
+              ]
+            },
+            "spec_status": {
+              "type": "integer",
+              "description": "Status code a literal reading of the OpenAPI spec would expect, e.g. 404. Present when the rule exists to correct exactly that reading.",
+              "minimum": 100,
+              "maximum": 599
+            }
+          }
+        },
+        "action": {
+          "type": "object",
+          "description": "What the rule requires instead of the literal spec reading.",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "description": "expect-status: the matching case must expect expect_status. expect-empty-collection: the matching case must expect a success status with an empty collection body. skip-test: no case may cover the matched condition at all.",
+              "enum": ["expect-status", "expect-empty-collection", "skip-test"]
+            },
+            "expect_status": {
+              "type": "integer",
+              "description": "Status the matching case must expect. Required for expect-status, and the success status for expect-empty-collection (default 200).",
+              "minimum": 100,
+              "maximum": 599
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "kind": { "const": "expect-status" } }, "required": ["kind"] },
+              "then": { "required": ["expect_status"] }
+            },
+            {
+              "if": { "properties": { "kind": { "const": "skip-test" } }, "required": ["kind"] },
+              "then": { "not": { "required": ["expect_status"] } }
+            }
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Free-text business justification the agent reasons over. It must explain why the override is correct behavior rather than a defect, because the agent decides how the rule generalizes to cases the structured condition does not name.",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "description": "active: applied to new generations. obsolete: retained for audit of past suites, not applied. superseded: a newer version of the same rule id exists.",
+          "enum": ["active", "obsolete", "superseded"]
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "current": {
+      "title": "AgentDefinitionsCurrent",
+      "description": "agent-definitions/current.json: the active version pointer per agent and per override rule, so a project loads without reading every version file.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agents", "override_rules", "updated_at"],
+      "properties": {
+        "agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agent_name", "current_version", "versions", "target_provider", "updated_at"],
+            "properties": {
+              "agent_name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+              "current_version": { "type": "integer", "minimum": 1 },
+              "versions": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "target_provider": { "type": "string", "enum": ["claude-agent-sdk", "copilot-sdk"] },
+              "updated_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "override_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "current_version", "versions", "status", "updated_at"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+              "current_version": { "type": "integer", "minimum": 1 },
+              "versions": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "status": { "type": "string", "enum": ["active", "obsolete", "superseded"] },
+              "updated_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

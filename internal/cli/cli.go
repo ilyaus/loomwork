@@ -44,6 +44,27 @@ Commands:
                    [--system TEXT] [--name NAME] [--tags a,b] [--no-extract]
                    [--temperature N] [--top-p N] [--max-tokens N] [--seed N]
   analysis import  --project REF --file PATH [--name NAME] [--tags a,b] [--no-extract]
+  agent-definition create  --project REF --name NAME (--body TEXT | --body-file PATH)
+                           [--target claude-agent-sdk|copilot-sdk] [--model MODEL]
+                           [--tools read_swagger,read_requirements] [--description TEXT] [--tags a,b]
+  agent-definition update  --project REF --name NAME [--body TEXT | --body-file PATH]
+                           [--target TARGET] [--model MODEL] [--tools a,b] [--tags a,b]
+  agent-definition list    --project REF
+  agent-definition show    --project REF --name NAME [--version N | --history]
+  agent-definition rule-create     --project REF --rule ID --title TEXT --rationale TEXT
+                                   [--methods GET,POST] [--path /orders/*] [--scenario SCENARIO]
+                                   [--spec-status N] [--action expect-status|expect-empty-collection|skip-test]
+                                   [--expect-status N] [--tags a,b]
+  agent-definition rule-update     --project REF --rule ID [same flags as rule-create]
+  agent-definition rule-set-status --project REF --rule ID --status active|obsolete [--version N]
+  agent-definition rule-list       --project REF [--active]
+  agent-definition rule-show       --project REF --rule ID [--version N | --history]
+  test-suite generate --project REF --suite ID --agent NAME --spec PATH
+                      [--templates a.json,b.json] [--model MODEL] [--title TEXT]
+                      [--description TEXT] [--tags a,b] [--instructions TEXT]
+  test-suite import   --project REF --file PATH [--suite ID] [--title TEXT] [--tags a,b]
+  test-suite list     --project REF
+  test-suite show     --project REF --suite ID [--version N | --history]
   cue list         [--tag a,b] [--search TEXT] [--limit N]
   cue show         --cue REF
   run              --project REF --artifact REF --model provider/model[#preset]
@@ -62,6 +83,12 @@ Global flags (accepted by every command):
   --json        emit machine-readable JSON
 
 Artifact types: spec, log, test-result, diagram, doc, generated
+Test scenarios: happy-path, missing-item, invalid-input, missing-authentication,
+  unauthorized, conflict, rate-limit, server-error, other
+
+Test generation runs an agent SDK session; see docs/agent-bridge-protocol.md for
+the Claude Agent SDK setup. A suite whose cases are not all linked to requirements
+is stored and flagged INCOMPLETE rather than rejected or silently accepted.
 `
 
 // Run dispatches a command line. It returns an error for any failure; the caller
@@ -103,6 +130,25 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return runGroup(rest, stdout, stderr, map[string]commandFunc{
 			"run":    analysisRun,
 			"import": analysisImport,
+		})
+	case "agent-definition":
+		return runGroup(rest, stdout, stderr, map[string]commandFunc{
+			"create":          agentDefinitionCreate,
+			"update":          agentDefinitionUpdate,
+			"list":            agentDefinitionList,
+			"show":            agentDefinitionShow,
+			"rule-create":     overrideRuleCreate,
+			"rule-update":     overrideRuleUpdate,
+			"rule-set-status": overrideRuleSetStatus,
+			"rule-list":       overrideRuleList,
+			"rule-show":       overrideRuleShow,
+		})
+	case "test-suite":
+		return runGroup(rest, stdout, stderr, map[string]commandFunc{
+			"generate": testSuiteGenerate,
+			"import":   testSuiteImport,
+			"list":     testSuiteList,
+			"show":     testSuiteShow,
 		})
 	case "cue":
 		return runGroup(rest, stdout, stderr, map[string]commandFunc{
