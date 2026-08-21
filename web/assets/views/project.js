@@ -44,14 +44,16 @@ export async function renderProject(view, ref, { navigate, notify }) {
     );
   }
 
-  // run wraps a mutation: report the failure, then repaint from the store.
+  // run wraps a mutation: repaint from the store on success, and on failure keep
+  // the current view so a rejected form still holds what the user typed.
   async function run(action, message) {
     try {
       await action();
-      if (message) notify(message, 'ok');
     } catch (error) {
       notify(error.message);
+      return;
     }
+    if (message) notify(message, 'ok');
     await paint().catch((error) => notify(error.message));
   }
 
