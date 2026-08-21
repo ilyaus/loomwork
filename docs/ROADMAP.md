@@ -57,8 +57,8 @@ a directory on first write.
 `source_ref`, status (`active`/`obsolete`/`superseded`), origin
 (`authored`/`extracted`), tags, and metadata. `model.DocumentSource` carries a
 project's links (GitHub/Confluence/ADO/other) plus optional local or S3 copies.
-Obsolete requirements are retained, never deleted; a superseded version's status
-is frozen.
+Obsolete requirements are retained, never deleted; `superseded` is set only by
+writing a newer version, and such a version's status is then frozen.
 
 **CLI.**
 

@@ -141,6 +141,9 @@ func (s RequirementSpec) normalize() (RequirementSpec, error) {
 	if err != nil {
 		return RequirementSpec{}, err
 	}
+	if status == RequirementStatusSuperseded {
+		return RequirementSpec{}, errSupersededNotSettable
+	}
 	s.Status = status
 	if s.Origin == "" {
 		s.Origin = RequirementOriginAuthored
@@ -205,6 +208,14 @@ func (r *Requirement) NextVersion(spec RequirementSpec) (*Requirement, error) {
 	return next, nil
 }
 
+// errSupersededNotSettable rejects superseded as an input status: only creating
+// a successor version may set it. Otherwise a version could be frozen (see
+// SetStatus) with no newer version to justify the freeze.
+var errSupersededNotSettable = fmt.Errorf(
+	"requirement status %q is set only by creating a new version: choose %s or %s",
+	RequirementStatusSuperseded, RequirementStatusActive, RequirementStatusObsolete,
+)
+
 // SetStatus changes the status of a stored version. A superseded version is
 // frozen: a newer version already carries the current text, so reactivating an
 // older snapshot would give a requirement id two active versions.
@@ -212,6 +223,9 @@ func (r *Requirement) SetStatus(status RequirementStatus) error {
 	parsed, err := ParseRequirementStatus(string(status))
 	if err != nil {
 		return err
+	}
+	if parsed == RequirementStatusSuperseded {
+		return errSupersededNotSettable
 	}
 	if r.Status == parsed {
 		return nil

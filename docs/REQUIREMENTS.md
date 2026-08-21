@@ -49,8 +49,9 @@ foundation beyond the extension points named in [`INTENT.md`](INTENT.md).
   wire format is fixed by
   [`schemas/requirement.schema.json`](schemas/requirement.schema.json).
 * Status is one of `active`, `obsolete`, or `superseded`. Obsolete requirements
-  are retained for audit, never deleted. A superseded version's status is frozen,
-  because a newer version already carries the current text.
+  are retained for audit, never deleted. `superseded` is assigned only by writing
+  a newer version — it cannot be set directly — and a superseded version's status
+  is then frozen, because the newer version carries the current text.
 * Origin is `authored` (entered by a QA engineer) or `extracted` (produced by
   later LLM document analysis). Both paths write the same schema to the same
   store.

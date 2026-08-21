@@ -17,7 +17,7 @@ func requirementCreate(e *env, args []string) error {
 		flags.StringVar(&textFile, "text-file", "", "read the requirement text from this file")
 		flags.StringVar(&sourceType, "source-type", "", "system of record: ado, confluence, github, other")
 		flags.StringVar(&sourceRef, "source-ref", "", "reference in the source system, e.g. a work item id or page url")
-		flags.StringVar(&status, "status", string(model.RequirementStatusActive), "active, obsolete, or superseded")
+		flags.StringVar(&status, "status", string(model.RequirementStatusActive), "active or obsolete; superseded is set only by update")
 		flags.StringVar(&origin, "origin", string(model.RequirementOriginAuthored), "authored (QA entry) or extracted (document analysis)")
 		flags.StringVar(&tags, "tags", "", "comma-separated tags")
 	})
@@ -90,7 +90,7 @@ func requirementSetStatus(e *env, args []string) error {
 	err := e.parse("requirement set-status", args, func(flags *flag.FlagSet) {
 		flags.StringVar(&projectRef, "project", "", "project id or name (required)")
 		flags.StringVar(&requirementID, "requirement", "", "requirement id (required)")
-		flags.StringVar(&status, "status", "", "active, obsolete, or superseded (required)")
+		flags.StringVar(&status, "status", "", "active or obsolete (required); superseded is set only by update")
 		flags.IntVar(&version, "version", 0, "version to change (default: the current version)")
 	})
 	if err != nil {
@@ -98,6 +98,9 @@ func requirementSetStatus(e *env, args []string) error {
 	}
 	if strings.TrimSpace(projectRef) == "" || strings.TrimSpace(requirementID) == "" {
 		return fmt.Errorf("requirement set-status: --project and --requirement are required")
+	}
+	if version < 0 {
+		return fmt.Errorf("requirement set-status: --version must be 1 or greater (0 or omitted changes the current version)")
 	}
 	parsed, err := model.ParseRequirementStatus(status)
 	if err != nil {
@@ -170,6 +173,9 @@ func requirementShow(e *env, args []string) error {
 	}
 	if history && version != 0 {
 		return fmt.Errorf("requirement show: use either --version or --history, not both")
+	}
+	if version < 0 {
+		return fmt.Errorf("requirement show: --version must be 1 or greater (0 or omitted shows the current version)")
 	}
 	if history {
 		versions, err := e.store.RequirementHistory(projectRef, requirementID)

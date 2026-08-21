@@ -28,13 +28,13 @@ Commands:
   project source   --project REF --source "name=NAME,type=ado,url=URL" ...
   requirement create     --project REF (--text TEXT | --text-file PATH)
                          [--source-type ado|confluence|github|other] [--source-ref REF]
-                         [--status active|obsolete|superseded] [--origin authored|extracted]
+                         [--status active|obsolete] [--origin authored|extracted]
                          [--tags a,b]
   requirement list       --project REF [--status STATUS]
   requirement show       --project REF --requirement ID [--version N | --history]
   requirement update     --project REF --requirement ID [--text TEXT | --text-file PATH]
                          [--source-type TYPE] [--source-ref REF] [--tags a,b]
-  requirement set-status --project REF --requirement ID --status STATUS [--version N]
+  requirement set-status --project REF --requirement ID --status active|obsolete [--version N]
   artifact add     --project REF --name NAME --type TYPE (--content TEXT | --file PATH | --ref PATH) [--tags a,b] [--pin]
   artifact list    --project REF [--all-versions]
   artifact show    --project REF --artifact REF

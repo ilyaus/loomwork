@@ -51,6 +51,12 @@ func TestNewRequirementNormalizesAndDefaults(t *testing.T) {
 			wantErr: "unknown requirement status",
 		},
 		{
+			name:    "rejects superseded as an input status",
+			id:      "req-007",
+			spec:    RequirementSpec{Text: "anything", Status: RequirementStatusSuperseded},
+			wantErr: "set only by creating a new version",
+		},
+		{
 			name:    "rejects a source reference without a type",
 			id:      "req-006",
 			spec:    RequirementSpec{Text: "anything", SourceRef: "AB#12"},
@@ -145,8 +151,13 @@ func TestRequirementSetStatusTransitions(t *testing.T) {
 	}{
 		{name: "active to obsolete", from: RequirementStatusActive, to: RequirementStatusObsolete},
 		{name: "obsolete back to active", from: RequirementStatusObsolete, to: RequirementStatusActive},
-		{name: "active to superseded", from: RequirementStatusActive, to: RequirementStatusSuperseded},
-		{name: "no-op on the same status", from: RequirementStatusSuperseded, to: RequirementStatusSuperseded},
+		{name: "no-op on the same status", from: RequirementStatusActive, to: RequirementStatusActive},
+		{
+			name:    "superseded cannot be set directly",
+			from:    RequirementStatusActive,
+			to:      RequirementStatusSuperseded,
+			wantErr: "set only by creating a new version",
+		},
 		{
 			name:    "superseded version is frozen",
 			from:    RequirementStatusSuperseded,
@@ -163,10 +174,13 @@ func TestRequirementSetStatusTransitions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			requirement, err := NewRequirement("req-001", RequirementSpec{Text: "text", Status: test.from})
+			requirement, err := NewRequirement("req-001", RequirementSpec{Text: "text"})
 			if err != nil {
 				t.Fatalf("NewRequirement: %v", err)
 			}
+			// Superseded is only reachable through an update, so set the
+			// starting status on the snapshot directly.
+			requirement.Status = test.from
 			err = requirement.SetStatus(test.to)
 			if test.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantErr) {

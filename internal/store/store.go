@@ -10,8 +10,9 @@ import (
 	"github.com/ilyaus/loomwork/internal/model"
 )
 
-// ErrNotFound is returned (possibly wrapped) when a project does not exist.
-var ErrNotFound = errors.New("store: project not found")
+// ErrNotFound is returned (possibly wrapped) when a stored entity does not
+// exist. Callers name the entity in the wrapping message.
+var ErrNotFound = errors.New("store: not found")
 
 // ProjectStore persists and retrieves projects.
 type ProjectStore interface {
