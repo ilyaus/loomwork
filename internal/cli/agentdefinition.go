@@ -133,6 +133,9 @@ func agentDefinitionShow(e *env, args []string) error {
 	if strings.TrimSpace(projectRef) == "" || strings.TrimSpace(name) == "" {
 		return fmt.Errorf("agent-definition show: --project and --name are required")
 	}
+	if version < 0 {
+		return fmt.Errorf("agent-definition show: --version must be 1 or greater (0 or omitted shows the current version)")
+	}
 	if history {
 		versions, err := e.store.AgentDefinitionHistory(projectRef, name)
 		if err != nil {
@@ -241,6 +244,9 @@ func overrideRuleSetStatus(e *env, args []string) error {
 	if strings.TrimSpace(projectRef) == "" || strings.TrimSpace(id) == "" || strings.TrimSpace(status) == "" {
 		return fmt.Errorf("agent-definition rule-set-status: --project, --rule, and --status are required")
 	}
+	if version < 0 {
+		return fmt.Errorf("agent-definition rule-set-status: --version must be 1 or greater (0 or omitted changes the current version)")
+	}
 	parsed, err := model.ParseOverrideRuleStatus(status)
 	if err != nil {
 		return err
@@ -299,6 +305,9 @@ func overrideRuleShow(e *env, args []string) error {
 	}
 	if strings.TrimSpace(projectRef) == "" || strings.TrimSpace(id) == "" {
 		return fmt.Errorf("agent-definition rule-show: --project and --rule are required")
+	}
+	if version < 0 {
+		return fmt.Errorf("agent-definition rule-show: --version must be 1 or greater (0 or omitted shows the current version)")
 	}
 	if history {
 		versions, err := e.store.OverrideRuleHistory(projectRef, id)

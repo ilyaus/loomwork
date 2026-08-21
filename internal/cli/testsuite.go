@@ -129,6 +129,9 @@ func testSuiteShow(e *env, args []string) error {
 	if strings.TrimSpace(projectRef) == "" || strings.TrimSpace(suiteID) == "" {
 		return fmt.Errorf("test-suite show: --project and --suite are required")
 	}
+	if version < 0 {
+		return fmt.Errorf("test-suite show: --version must be 1 or greater (0 or omitted shows the current version)")
+	}
 	if history {
 		versions, err := e.store.TestSuiteHistory(projectRef, suiteID)
 		if err != nil {

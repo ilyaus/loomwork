@@ -131,6 +131,15 @@ func TestAgentDefinitionCommandsReportBadInput(t *testing.T) {
 	if got := execErr(t, home, "agent-definition", "show", "--project", "orders", "--name", "absent"); !strings.Contains(got, "not found") {
 		t.Errorf("error = %q", got)
 	}
+	for _, args := range [][]string{
+		{"agent-definition", "show", "--project", "orders", "--name", "agent", "--version", "-1"},
+		{"agent-definition", "rule-show", "--project", "orders", "--rule", "r", "--version", "-1"},
+		{"test-suite", "show", "--project", "orders", "--suite", "s", "--version", "-1"},
+	} {
+		if got := execErr(t, home, args...); !strings.Contains(got, "--version must be 1 or greater") {
+			t.Errorf("%v: error = %q, want the same guard requirement show gives", args, got)
+		}
+	}
 	if got := execErr(t, home, "agent-definition", "rule-create", "--project", "orders",
 		"--rule", "no-rationale", "--title", "Missing rationale"); !strings.Contains(got, "rationale") {
 		t.Errorf("error = %q, want the rationale enforced", got)
