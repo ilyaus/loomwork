@@ -100,9 +100,24 @@ function sourcesSection(project, run) {
   );
 }
 
+// httpLink renders a source url as a link only when it is http(s); any other
+// scheme (javascript:, data:) is shown as text so it cannot be activated.
+function httpLink(url) {
+  let parsed;
+  try {
+    parsed = new URL(url, document.baseURI);
+  } catch {
+    return el('span', { class: 'mono dim', text: url });
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return el('span', { class: 'mono dim', text: url });
+  }
+  return el('a', { href: parsed.href, target: '_blank', rel: 'noreferrer', text: url });
+}
+
 function sourceLocation(source) {
   const parts = [];
-  if (source.url) parts.push(el('a', { href: source.url, target: '_blank', rel: 'noreferrer', text: source.url }));
+  if (source.url) parts.push(httpLink(source.url));
   if (source.localPath) parts.push(el('span', { class: 'mono dim', text: source.localPath }));
   if (source.s3Uri) parts.push(el('span', { class: 'mono dim', text: source.s3Uri }));
   return el('div', { class: 'row' }, parts);
@@ -148,7 +163,9 @@ function sourceForm(project, run) {
 function requirementsSection(project, requirements, history, state, run) {
   const statusFilter = select(
     'status',
-    [['', 'all'], ['active', 'active'], ['obsolete', 'obsolete'], ['superseded', 'superseded']],
+    // Superseded versions are never current, so they are reachable through a
+    // requirement's version history rather than through this filter.
+    [['', 'all'], ['active', 'active'], ['obsolete', 'obsolete']],
     state.statusFilter,
   );
   statusFilter.addEventListener('change', () =>
