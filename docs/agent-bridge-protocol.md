@@ -49,6 +49,11 @@ accepts. Validation stays in the host handler.
 | `turn_complete` | `id`, `text`, `structured`, `stop_reason`, `usage` | ends the waiting `Send` |
 | `error` | `id`, `message` | `AgentEventError`, and fails the waiting `Send` |
 
+`turn_complete` and `error` must echo the `id` of the `prompt` they answer. A
+turn whose `Send` gave up (a cancelled context) can still finish on the bridge,
+and the host drops a turn-ending event whose `id` is not the one it is waiting
+for rather than handing the stale result to the next `Send`.
+
 ## Structured output
 
 `PromptRequest.Structured` is normalized rather than delegated: the host appends

@@ -259,12 +259,13 @@ type claudeSession struct {
 	writeMu sync.Mutex
 	turnMu  sync.Mutex
 
-	mu      sync.Mutex
-	tools   map[string]ToolHandler
-	pending chan bridgeEvent
-	closed  bool
-	readErr error
-	turns   int
+	mu        sync.Mutex
+	tools     map[string]ToolHandler
+	pending   chan bridgeEvent
+	pendingID string
+	closed    bool
+	readErr   error
+	turns     int
 
 	ready chan bridgeEvent
 	done  chan struct{}
@@ -315,11 +316,13 @@ func (s *claudeSession) Send(ctx context.Context, req PromptRequest) (PromptResu
 	s.turns++
 	id := fmt.Sprintf("turn-%d", s.turns)
 	s.pending = pending
+	s.pendingID = id
 	s.mu.Unlock()
 
 	defer func() {
 		s.mu.Lock()
 		s.pending = nil
+		s.pendingID = ""
 		s.mu.Unlock()
 	}()
 
@@ -465,8 +468,25 @@ func (s *claudeSession) runTool(event bridgeEvent) {
 	}
 }
 
-// deliver hands a turn-ending event to the waiting Send call.
+// deliver hands a turn-ending event to the Send call that asked for it. A turn
+// abandoned by a cancelled context can still finish on the bridge, so an event
+// whose id is not the awaited one is dropped rather than answering a later turn.
 func (s *claudeSession) deliver(event bridgeEvent) {
+	s.mu.Lock()
+	pending, awaited := s.pending, s.pendingID
+	s.mu.Unlock()
+	if pending == nil || event.ID != awaited {
+		return
+	}
+	select {
+	case pending <- event:
+	default:
+	}
+}
+
+// deliverFailure unblocks whichever turn is waiting: the bridge is gone, so no
+// turn can complete and the id no longer distinguishes anything.
+func (s *claudeSession) deliverFailure(event bridgeEvent) {
 	s.mu.Lock()
 	pending := s.pending
 	s.mu.Unlock()
@@ -494,7 +514,7 @@ func (s *claudeSession) failPending(cause error) {
 	if cause != nil && !errors.Is(cause, io.EOF) {
 		message = cause.Error()
 	}
-	s.deliver(bridgeEvent{Type: "error", Message: fmt.Sprintf("%s (stderr: %s)", message, s.process.StderrTail())})
+	s.deliverFailure(bridgeEvent{Type: "error", Message: fmt.Sprintf("%s (stderr: %s)", message, s.process.StderrTail())})
 }
 
 // emit publishes an event without blocking: a caller that ignores Events must
