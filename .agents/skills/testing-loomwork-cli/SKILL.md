@@ -58,6 +58,41 @@ Konsole font-size changes via `ctrl+shift+plus` and `konsoleprofile Font=...` di
 output is still legible because the recording captures the real 1600x1200 display. Put each test step
 in a small `/tmp/*.sh` script and run them one at a time so the terminal shows short, readable commands.
 
+## Agent definitions, override rules, test suites (Phase 3+)
+`LOOMWORK_HOME=<dir>` also isolates state (equivalent to `--home`). Store layout per project:
+```
+agent-definitions/<name>.v<n>.md                # v1 file is byte-frozen when v2 is added
+agent-definitions/current.json                  # {"agents":[{agent_name,current_version,versions}],"override_rules":[]}
+agent-definitions/override-rules/<rule>.v<n>.json
+test-suites/<suite-id>/v<n>/{suite.json,tests/tc-00N.json} + current.json
+```
+Contracts worth asserting (they are easy to get wrong):
+- an imported suite with a case that has `requirement_ids: []`, or zero cases, is **stored and flagged**,
+  never rejected: exit 0, `INCOMPLETE` in output, `"incomplete": true` in `current.json`, reason strings
+  `1 test case(s) have no requirement link: tc-002` / `the suite has no test cases`.
+- override rules follow the *supersede* pattern (v1 is rewritten once to `status: superseded`), unlike
+  agent-definition versions which are immutable — do not assert byte-identity of rule v1 across an update.
+- suite ids are validated on both write and **read** paths (`model.NormalizeSuiteID`, pattern
+  `^[a-z0-9][a-z0-9-]*$`). `test-suite show/--history/import` with `../../other`, `suite/../..`,
+  `Suite Orders` must exit 1 with `test suite id "<id>" must be lowercase letters, digits, and dashes`.
+  Good traversal test: plant a valid suite layout at `<project>/decoy-suite` (outside `test-suites/`) and
+  confirm `--suite ../decoy-suite` errors instead of rendering it, plus a `find $LOOMWORK_HOME -type d`
+  diff before/after to prove nothing was created outside `test-suites/`.
+
+## Faking the Claude agent bridge (credential-free `test-suite generate`)
+`LOOMWORK_CLAUDE_BRIDGE=<script>` replaces `bridge/claude-agent-bridge.mjs`; it is run as `node <script>`
+(Node 22 is installed). Minimal stdio protocol (see `internal/cli/testsuite_test.go` and
+`docs/agent-bridge-protocol.md`): read JSON lines; on `start_session` reply `{"type":"ready","session_id":...}`;
+on `prompt` reply `{"type":"turn_complete","id":<request.id>,"text":<suite JSON>,"stop_reason":"end_turn"}`.
+- The bridge **must echo `request.id`**. The host drops a `turn_complete`/`error` whose id is not the awaited
+  turn, so a hardcoded `turn-1` (or any bogus id) makes the CLI wait forever — the CLI uses
+  `context.Background()`, so wrap such a run in `timeout N ...` and treat exit 124 as "turn correctly still
+  waiting". If the fake bridge exits after the bad reply you instead get exit 1
+  `claude agent turn failed: bridge closed its output`.
+- Missing bridge script ⇒ exit 1 `claude agent bridge exited before the session started`, nothing stored.
+- Never assert exit codes through a pipe (`| head`) — SIGPIPE turns into exit 141; redirect to a file or
+  capture with `out=$(cmd 2>&1); code=$?`.
+
 ## Devin Secrets Needed
 None for this flow. Real Azure/Bedrock verification would require `AZURE_AI_API_KEY`
 (plus a real `azure.endpoint`/`deployment`) and `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
