@@ -66,9 +66,11 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
 ## Assertions that actually catch regressions
 - Source "replace by name": re-submit the same source *name* with a different type/url and assert
   the table still has exactly ONE row with the new values (duplicate row = bug).
-- Requirement versioning: after "Save new version", assert the already-open detail rebinds to `v2`,
-  the Requirements list shows `v2`, and history shows `v2 ACTIVE` above `v1 SUPERSEDED` with the
-  **old text preserved**.
+- Requirement versioning: after "Save new version", assert the Requirements list row shows `v2`.
+  The list renders no history, so assert the version semantics against the read-only
+  `GET /api/projects/{ref}/requirements/{id}/history` endpoint from the shell: "New version" grows
+  history by one with the previous version `superseded` and its **old text preserved**, while "Edit"
+  (PUT) leaves history length, version, status, and `created_at` untouched.
 - Version + source type interaction: create a requirement with a source type and `source_ref`, then
   save a new version editing only the text. The omitted source fields must inherit in the store.
 - `PATCH /requirements/{id}` intentionally rejects a `status` field; status changes go through the
