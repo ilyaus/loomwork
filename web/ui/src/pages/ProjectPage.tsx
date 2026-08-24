@@ -403,7 +403,7 @@ function RequirementList({
           const activeEdit = editing?.id === requirement.id;
           const activeHistory = historyId === requirement.id;
           return (
-            <div className={`entity-item ${activeEdit ? "editing" : ""}`} key={requirement.id}>
+            <div className={`entity-item ${activeEdit || activeHistory ? "panel-open" : ""}`} key={requirement.id}>
               <div className="entity-row requirement-row">
                 <span className={`tag requirement-status-badge ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
                   {requirement.status}

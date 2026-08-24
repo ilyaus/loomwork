@@ -903,7 +903,7 @@ textarea {
   justify-content: flex-start;
 }
 
-.entity-item.editing > .entity-row {
+.entity-item.panel-open > .entity-row {
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
   border-color: var(--dim);
