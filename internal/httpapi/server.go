@@ -71,6 +71,8 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case len(segments) == 1 && segments[0] == "openapi.json":
+		s.route(w, r, map[string]http.HandlerFunc{http.MethodGet: s.openAPI})
 	case len(segments) == 1 && segments[0] == "health":
 		s.route(w, r, map[string]http.HandlerFunc{http.MethodGet: s.health})
 	case len(segments) == 1 && segments[0] == "workspace":

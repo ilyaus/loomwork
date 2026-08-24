@@ -177,6 +177,20 @@ authentication and must stay on the loopback interface. Requirement payloads on
 the wire match [`docs/schemas/requirement.schema.json`](docs/schemas/requirement.schema.json)
 exactly.
 
+The API describes itself: `GET /api/openapi.json` returns the OpenAPI 3.1
+document embedded in the binary
+([`internal/httpapi/openapi.json`](internal/httpapi/openapi.json)), so a script,
+a client generator, or a Swagger viewer can read the contract from the running
+server:
+
+```
+curl -s http://127.0.0.1:8787/api/openapi.json | jq '.paths | keys'
+```
+
+The document is hand-written next to the router and a test rejects any drift
+between the two: every documented operation must be routed, and each path's
+documented methods must equal the methods the router actually serves.
+
 ## Workspace layout
 
 `$LOOMWORK_HOME` (default `~/.loomwork`) holds all state:
