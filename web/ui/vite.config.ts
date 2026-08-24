@@ -15,11 +15,6 @@ export default defineConfig({
           if (id.indexOf("node_modules") === -1) return;
           if (id.indexOf("/swagger-ui-es-bundle-core.js") !== -1) return "swagger-core";
           if (
-            id.indexOf("/react-syntax-highlighter/") !== -1 ||
-            id.indexOf("/refractor/") !== -1 ||
-            id.indexOf("/prismjs/") !== -1 ||
-            id.indexOf("/highlight.js/") !== -1 ||
-            id.indexOf("/lowlight/") !== -1 ||
             id.indexOf("/swagger-client/") !== -1 ||
             id.indexOf("/core-js-pure/") !== -1 ||
             id.indexOf("/@swagger-api/") !== -1 ||
@@ -36,6 +31,15 @@ export default defineConfig({
             id.indexOf("/openapi-server-url-templating/") !== -1 ||
             id.indexOf("/openapi-path-templating/") !== -1 ||
             id.indexOf("/@babel/runtime-corejs3/") !== -1
+          ) {
+            return "swagger-client";
+          }
+          if (
+            id.indexOf("/react-syntax-highlighter/") !== -1 ||
+            id.indexOf("/refractor/") !== -1 ||
+            id.indexOf("/prismjs/") !== -1 ||
+            id.indexOf("/highlight.js/") !== -1 ||
+            id.indexOf("/lowlight/") !== -1
           ) {
             return "swagger-syntax";
           }
