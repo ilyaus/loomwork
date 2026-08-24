@@ -19,7 +19,8 @@
   "tags": [
     {"name": "meta", "description": "Server and workspace introspection."},
     {"name": "projects", "description": "Projects and their document sources."},
-    {"name": "requirements", "description": "Versioned, immutable requirement snapshots."}
+    {"name": "requirements", "description": "Versioned, immutable requirement snapshots."},
+    {"name": "desktop", "description": "Project tree, typed viewers, model discovery, and streamed chat."}
   ],
   "paths": {
     "/api/openapi.json": {
@@ -77,6 +78,28 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/models": {
+      "get": {
+        "tags": ["desktop"],
+        "operationId": "listModels",
+        "summary": "List configured text providers and their available models.",
+        "description": "A provider discovery failure stays on that provider row and does not hide other configured providers. Configured default and preset-backed models remain selectable when live discovery is unavailable.",
+        "responses": {
+          "200": {
+            "description": "Configured provider/model choices.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/ProviderModels"}
+                }
+              }
+            }
+          },
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
         }
       }
     },
@@ -295,6 +318,83 @@
           "404": {"$ref": "#/components/responses/NotFound"}
         }
       }
+    },
+    "/api/projects/{projectRef}/items": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["desktop"],
+        "operationId": "listProjectItems",
+        "summary": "Build the Agent Desktop entity tree.",
+        "description": "Returns requirements, agent definitions, override rules, test suites and nested cases, report files, and latest free-form artifact revisions grouped by their project subfolder.",
+        "responses": {
+          "200": {
+            "description": "Grouped project tree.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/TreeResponse"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/items/{family}/{itemRef}": {
+      "parameters": [
+        {"$ref": "#/components/parameters/ProjectRef"},
+        {"$ref": "#/components/parameters/ItemFamily"},
+        {"$ref": "#/components/parameters/ItemRef"}
+      ],
+      "get": {
+        "tags": ["desktop"],
+        "operationId": "getProjectItem",
+        "summary": "Read one typed viewer document.",
+        "description": "The artifactType and mediaType select the frontend viewer registry. Unknown values remain valid and use the raw fallback.",
+        "parameters": [{"$ref": "#/components/parameters/Version"}],
+        "responses": {
+          "200": {
+            "description": "Viewer registry input.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ViewerDocument"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/chat": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "post": {
+        "tags": ["desktop"],
+        "operationId": "streamProjectChat",
+        "summary": "Stream one assistant turn with Server-Sent Events.",
+        "description": "The stream emits ready, message, done, or error events. Message data contains a delta field. This provider-neutral wire format remains stable when AgentAdapter streaming replaces the initial TextGenerator implementation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/ChatRequest"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-Sent Event stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {"type": "string"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
     }
   },
   "components": {
@@ -312,6 +412,23 @@
         "required": true,
         "description": "Requirement identity, stable across versions.",
         "schema": {"type": "string", "pattern": "^req-[0-9]{3,}$"}
+      },
+      "ItemFamily": {
+        "name": "family",
+        "in": "path",
+        "required": true,
+        "description": "Typed project subfolder or nested test-case family.",
+        "schema": {
+          "type": "string",
+          "enum": ["requirements", "agent-definitions", "override-rules", "test-suites", "test-cases", "reports", "artifacts"]
+        }
+      },
+      "ItemRef": {
+        "name": "itemRef",
+        "in": "path",
+        "required": true,
+        "description": "Entity id or name. Test-case refs use suite-id~case-id.",
+        "schema": {"type": "string", "minLength": 1}
       },
       "Version": {
         "name": "version",
@@ -332,6 +449,14 @@
       },
       "NotFound": {
         "description": "No such endpoint, project, or requirement version.",
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/Error"}
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "The desktop provider service was not configured.",
         "content": {
           "application/json": {
             "schema": {"$ref": "#/components/schemas/Error"}
@@ -383,6 +508,109 @@
         "properties": {
           "home": {"type": "string", "description": "Workspace root (LOOMWORK_HOME)."},
           "projectsDir": {"type": "string", "description": "Directory holding one folder per project."}
+        }
+      },
+      "ProviderModels": {
+        "type": "object",
+        "required": ["provider", "kind", "status", "models"],
+        "properties": {
+          "provider": {"type": "string"},
+          "kind": {"type": "string", "enum": ["ollama", "lmstudio", "azure", "bedrock"]},
+          "status": {"type": "string"},
+          "models": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/ModelChoice"}
+          }
+        }
+      },
+      "ModelChoice": {
+        "type": "object",
+        "required": ["id", "selector", "presets"],
+        "properties": {
+          "id": {"type": "string"},
+          "description": {"type": "string"},
+          "selector": {"type": "string", "description": "provider/model"},
+          "presets": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "TreeResponse": {
+        "type": "object",
+        "required": ["groups"],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/TreeGroup"}
+          }
+        }
+      },
+      "TreeGroup": {
+        "type": "object",
+        "required": ["family", "label", "items"],
+        "properties": {
+          "family": {"type": "string"},
+          "label": {"type": "string"},
+          "items": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/TreeItem"}
+          }
+        }
+      },
+      "TreeItem": {
+        "type": "object",
+        "required": ["ref", "name", "family", "artifactType", "mediaType"],
+        "properties": {
+          "ref": {"type": "string"},
+          "name": {"type": "string"},
+          "family": {"type": "string"},
+          "artifactType": {"type": "string"},
+          "mediaType": {"type": "string"},
+          "version": {"type": "integer", "minimum": 1},
+          "status": {"type": "string"},
+          "children": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/TreeItem"}
+          }
+        }
+      },
+      "ViewerDocument": {
+        "type": "object",
+        "required": ["ref", "name", "family", "artifactType", "mediaType", "body"],
+        "properties": {
+          "ref": {"type": "string"},
+          "name": {"type": "string"},
+          "family": {"type": "string"},
+          "artifactType": {"type": "string"},
+          "mediaType": {"type": "string"},
+          "version": {"type": "integer", "minimum": 1},
+          "body": {},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "content"],
+        "properties": {
+          "role": {"type": "string", "enum": ["user", "assistant"]},
+          "content": {"type": "string", "minLength": 1}
+        }
+      },
+      "ChatRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["selector", "messages"],
+        "properties": {
+          "selector": {"type": "string", "description": "provider/model[#preset]"},
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "#/components/schemas/ChatMessage"}
+          },
+          "artifactRefs": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Optional artifact ids or names to attach as grounding context."
+          }
         }
       },
       "CreateProjectRequest": {

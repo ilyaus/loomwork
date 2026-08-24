@@ -1,6 +1,6 @@
-// Package web embeds the browser UI so the workbench ships as one static binary.
-// The assets are hand-written ES modules and CSS with no build step, so a `go
-// build` is the whole build: nothing regenerates or minifies these files.
+// Package web embeds the Vite production build so the React workbench ships as
+// one static binary. Run the web/ui build before compiling Go; make build does
+// both steps.
 package web
 
 import (
@@ -8,12 +8,12 @@ import (
 	"io/fs"
 )
 
-//go:embed assets
+//go:embed all:dist
 var assets embed.FS
 
 // Assets returns the UI file tree rooted at index.html.
 func Assets() fs.FS {
-	sub, err := fs.Sub(assets, "assets")
+	sub, err := fs.Sub(assets, "dist")
 	if err != nil {
 		// The embedded tree is fixed at compile time, so this cannot fail.
 		panic(err)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -317,14 +318,22 @@ func TestUIAssetsAreServed(t *testing.T) {
 	}
 	handler := server.Handler()
 
-	for _, path := range []string{"/", "/app.js", "/projects/prj-1"} {
+	for _, path := range []string{"/", "/projects/prj-1"} {
 		recorder := call(t, handler, http.MethodGet, path, nil, nil)
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("GET %s = %d, want 200", path, recorder.Code)
 		}
 	}
 	recorder := call(t, handler, http.MethodGet, "/", nil, nil)
-	if !strings.Contains(recorder.Body.String(), "app.js") {
-		t.Errorf("index body = %q, want the app entry point", recorder.Body.String())
+	if !strings.Contains(recorder.Body.String(), `<div id="root"></div>`) {
+		t.Errorf("index body = %q, want the React root", recorder.Body.String())
+	}
+	asset := regexp.MustCompile(`src="([^"]+\.js)"`).FindStringSubmatch(recorder.Body.String())
+	if len(asset) != 2 {
+		t.Fatalf("index body = %q, want a Vite JavaScript asset", recorder.Body.String())
+	}
+	assetRecorder := call(t, handler, http.MethodGet, asset[1], nil, nil)
+	if assetRecorder.Code != http.StatusOK {
+		t.Fatalf("GET %s = %d, want embedded Vite asset", asset[1], assetRecorder.Code)
 	}
 }

@@ -112,6 +112,8 @@ func TestOpenAPIDocumentCoversEveryRoute(t *testing.T) {
 		url := strings.NewReplacer(
 			"{projectRef}", project,
 			"{requirementId}", requirementID,
+			"{family}", "artifacts",
+			"{itemRef}", "missing",
 		).Replace(path)
 		if strings.Contains(url, "{") {
 			t.Fatalf("path %q has a template variable the test does not know how to fill", path)

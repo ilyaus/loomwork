@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ilyaus/loomwork/internal/httpapi"
+	"github.com/ilyaus/loomwork/internal/orchestrator"
 	"github.com/ilyaus/loomwork/web"
 )
 
@@ -36,7 +37,10 @@ func serve(e *env, args []string) error {
 		return err
 	}
 
-	api, err := httpapi.New(httpapi.Options{Store: e.store, Assets: web.Assets(), Home: e.home})
+	engine := orchestrator.New(e.config, e.store, e.presets, nil)
+	api, err := httpapi.New(httpapi.Options{
+		Store: e.store, Assets: web.Assets(), Home: e.home, Desktop: engine,
+	})
 	if err != nil {
 		return err
 	}

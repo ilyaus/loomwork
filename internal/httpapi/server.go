@@ -33,13 +33,16 @@ type Options struct {
 	// Home is the workspace directory, reported by /api/workspace so the UI can
 	// show which workspace it is editing.
 	Home string
+	// Desktop supplies provider discovery and agent chat.
+	Desktop DesktopService
 }
 
 // Server routes JSON endpoints over a project store and serves the embedded UI.
 type Server struct {
-	store  *store.DirStore
-	assets fs.FS
-	home   string
+	store   *store.DirStore
+	assets  fs.FS
+	home    string
+	desktop DesktopService
 }
 
 // New validates options and builds a server.
@@ -47,7 +50,10 @@ func New(options Options) (*Server, error) {
 	if options.Store == nil {
 		return nil, fmt.Errorf("httpapi: a project store is required")
 	}
-	return &Server{store: options.Store, assets: options.Assets, home: options.Home}, nil
+	return &Server{
+		store: options.Store, assets: options.Assets, home: options.Home,
+		desktop: options.Desktop,
+	}, nil
 }
 
 // Handler returns the routed handler: /api/... for JSON, everything else for the
@@ -77,6 +83,8 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 		s.route(w, r, map[string]http.HandlerFunc{http.MethodGet: s.health})
 	case len(segments) == 1 && segments[0] == "workspace":
 		s.route(w, r, map[string]http.HandlerFunc{http.MethodGet: s.workspace})
+	case len(segments) == 1 && segments[0] == "models":
+		s.route(w, r, map[string]http.HandlerFunc{http.MethodGet: s.listModels})
 	case len(segments) == 1 && segments[0] == "projects":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet:  s.listProjects,
@@ -96,6 +104,18 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 			http.MethodGet:  s.projectHandler(s.listRequirements),
 			http.MethodPost: s.projectHandler(s.createRequirement),
 		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "items":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet: s.projectHandler(s.listProjectItems),
+		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "chat":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodPost: s.projectHandler(s.chat),
+		})
+	case len(segments) == 5 && segments[0] == "projects" && segments[2] == "items":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet: s.itemHandler(s.getProjectItem),
+		})
 	case len(segments) == 4 && segments[0] == "projects" && segments[2] == "requirements":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet:   s.requirementHandler(s.getRequirement),
@@ -111,6 +131,18 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 		})
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("no endpoint for %s", r.URL.Path))
+	}
+}
+
+// itemHandler passes the project, entity family, and entity reference.
+func (s *Server) itemHandler(handler func(http.ResponseWriter, *http.Request, string, string, string)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		segments, err := pathSegments(strings.TrimPrefix(r.URL.EscapedPath(), "/api/"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		handler(w, r, segments[1], segments[3], segments[4])
 	}
 }
 

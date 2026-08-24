@@ -162,6 +162,85 @@ func TestRunPromptStoresGeneratedArtifact(t *testing.T) {
 	}
 }
 
+func TestListModelsCombinesDiscoveryDefaultsAndPresets(t *testing.T) {
+	generator := &fakeGenerator{name: "ollama"}
+	registry := newRegistry(t, []preset.Entry{{
+		Provider: provider.KindOllama,
+		Model:    "qwen3:8b",
+		Presets:  map[string]provider.Params{"review": {}},
+	}})
+	dirStore, err := store.NewDirStore(filepath.Join(t.TempDir(), "projects"))
+	if err != nil {
+		t.Fatalf("NewDirStore: %v", err)
+	}
+	engine := New(config.Config{Providers: map[string]provider.Config{
+		"ollama": {
+			Kind:         provider.KindOllama,
+			DefaultModel: "llama3.2",
+		},
+	}}, dirStore, registry, func(provider.Config) (provider.TextGenerator, error) {
+		return generator, nil
+	})
+
+	groups := engine.ListModels(context.Background())
+	if len(groups) != 1 || groups[0].Status != "available" {
+		t.Fatalf("groups = %+v", groups)
+	}
+	if len(groups[0].Models) != 3 {
+		t.Fatalf("models = %+v, want discovered, default, and preset-backed choices", groups[0].Models)
+	}
+	choices := map[string]ModelChoice{}
+	for _, choice := range groups[0].Models {
+		choices[choice.ID] = choice
+	}
+	if choices["qwen3:8b"].Selector != "ollama/qwen3:8b" ||
+		len(choices["qwen3:8b"].Presets) != 1 ||
+		choices["qwen3:8b"].Presets[0] != "review" {
+		t.Fatalf("preset-backed choice = %+v", choices["qwen3:8b"])
+	}
+}
+
+func TestChatUsesTranscriptAndArtifactContextWithoutMutatingProject(t *testing.T) {
+	generator := &fakeGenerator{
+		name: "ollama",
+		response: provider.Response{
+			Text: "The log contains a timeout.", Model: "qwen3:8b", FinishReason: "stop",
+		},
+	}
+	harness := newHarness(t, generator, nil)
+
+	response, err := harness.orchestrator.Chat(context.Background(), ChatRequest{
+		ProjectRef: "triage",
+		Selector:   "ollama/qwen3:8b",
+		Messages: []ChatMessage{
+			{Role: provider.RoleUser, Content: "What failed?"},
+			{Role: provider.RoleAssistant, Content: "I will inspect the log."},
+			{Role: provider.RoleUser, Content: "Summarize it."},
+		},
+		ArtifactRefs: []string{harness.target.ID},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if response.Text != "The log contains a timeout." {
+		t.Fatalf("response = %+v", response)
+	}
+	if !strings.Contains(generator.captured.Prompt, "user: What failed?") ||
+		!strings.Contains(generator.captured.Prompt, "assistant: I will inspect the log.") {
+		t.Errorf("prompt = %q", generator.captured.Prompt)
+	}
+	if len(generator.captured.Context) != 1 || generator.captured.Context[0].Content != "ERROR timeout" {
+		t.Fatalf("context = %+v", generator.captured.Context)
+	}
+	project, err := harness.store.Resolve(harness.project.ID)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(project.Artifacts) != 1 {
+		t.Fatalf("artifacts = %d, chat must not persist output", len(project.Artifacts))
+	}
+}
+
 func TestRunPromptIncludesPinnedContextLast(t *testing.T) {
 	generator := &fakeGenerator{name: "lmstudio", response: provider.Response{Text: "ok"}}
 	harness := newHarness(t, generator, nil)
