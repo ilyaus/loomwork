@@ -59,6 +59,32 @@ Gotchas:
 - Status filter: mark the only requirement obsolete, then filter `active` → "No requirements
   match." and the detail pane resets to its placeholder.
 
+## The OpenAPI document (`GET /api/openapi.json`) and contract drift
+`internal/httpapi/openapi.json` is **hand-written** and `go:embed`ed, so it can silently drift from the
+handlers. Cheap, high-value way to test it against a live server (no auth, no fixtures):
+- Byte identity: `curl -s 127.0.0.1:8787/api/openapi.json -o /tmp/b.json && sha256sum /tmp/b.json internal/httpapi/openapi.json`
+  (must match; also assert `Content-Type: application/json; charset=utf-8` and `openapi == "3.1.0"`).
+- Method handling: every route goes through `(*Server).route`, which sets a **sorted, comma-space joined**
+  `Allow` header and 405s. So `Allow` is machine-readable: for each documented path, send a bogus method
+  (e.g. `TRACE`) and assert the `Allow` set equals the document's method list. Unknown paths 404 with
+  `{"error":"no endpoint for <path>"}` — use that string to tell "not routed" from "wrong method".
+  Note `curl -X HEAD` hangs waiting for a body; use `curl -I`.
+- Schema validation: `pip install --user jsonschema` is already in the blueprint. Fetch the served doc,
+  replace `#/components/` with `#/$defs/`, wrap it as `{"$defs": doc["components"], **operation_schema}`
+  and run `Draft202012Validator` over each real response body. Reusable harness:
+  `/tmp/pr18/contract.py` (24 documented operations) and `/tmp/pr18/strict.py` (key diff + route sweep).
+- `additionalProperties: false` only exists on request schemas + `Requirement`/`DocumentSource`, so a
+  validator alone can NOT catch extra fields on `Project`/`ProjectSummary`/`Workspace`/`Artifact`.
+  Add an explicit key diff (actual keys − documented `properties`, and `required` − actual keys).
+- Fields with `omitempty` legitimately go missing (e.g. `Artifact` shows 7 of 10 documented keys) — only
+  a missing **required** key is a finding.
+- To exercise the `Artifact` schema over HTTP there is no artifact endpoint: add one with the CLI against
+  the *same* `LOOMWORK_HOME` (`loomwork artifact add --project p --name n --type spec --file f`) and read it
+  back inside `GET /api/projects/{ref}`.
+- Go's mux matches methods case-sensitively: sending lowercase `post` from a script yields a confusing 405.
+- `npx --yes @redocly/cli lint internal/httpapi/openapi.json` is available and takes ~1 min the first time;
+  3 `operation-4xx-response` advisories are expected/known.
+
 ## Known cosmetic trap: literal "null" in the DOM
 `el()` and `render()` in `web/assets/dom.js` filter out `null` children, but native
 `Element.append` stringifies them, so any view that passes a conditional child straight to
