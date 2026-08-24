@@ -166,7 +166,7 @@ export default function ProjectPage() {
                       family={activeTab.family}
                       projectRef={projectRef}
                       items={tree.data.groups.find((group) => group.family === activeTab.family)?.items || []}
-                      onOpen={openItem}
+                      refresh={refresh}
                     />
                   )
                   : activeTab.item && <ActiveViewer projectRef={projectRef} item={activeTab.item} refresh={refresh} />}
@@ -273,33 +273,50 @@ function FamilyList({
   family,
   projectRef,
   items,
-  onOpen,
+  refresh,
 }: {
   family: string;
   projectRef: string;
   items: TreeItem[];
-  onOpen: (item: TreeItem) => void;
+  refresh: () => void;
 }) {
   if (family === "requirements") {
-    return <RequirementList projectRef={projectRef} items={items} onOpen={onOpen} />;
+    return <RequirementList projectRef={projectRef} items={items} refresh={refresh} />;
   }
-  return <TestSuiteList items={items} onOpen={onOpen} />;
+  return <TestSuiteList projectRef={projectRef} items={items} refresh={refresh} />;
+}
+
+function InlineDetail({projectRef, item, refresh}: {projectRef: string; item: TreeItem; refresh: () => void}) {
+  return (
+    <div className="inline-detail">
+      <ActiveViewer projectRef={projectRef} item={item} refresh={refresh} />
+    </div>
+  );
 }
 
 function RequirementList({
   projectRef,
   items,
-  onOpen,
+  refresh,
 }: {
   projectRef: string;
   items: TreeItem[];
-  onOpen: (item: TreeItem) => void;
+  refresh: () => void;
 }) {
   const requirements = useQuery({
     queryKey: ["requirements", projectRef],
     queryFn: () => api.listRequirements(projectRef),
   });
   const treeItems = useMemo(() => new Map(items.map((item) => [item.ref, item])), [items]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  function toggle(ref: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(ref)) next.delete(ref);
+      else next.add(ref);
+      return next;
+    });
+  }
   if (requirements.isLoading) return <div className="empty-state">Loading requirements…</div>;
   if (requirements.error) return <div className="error-panel">{requirements.error.message}</div>;
   return (
@@ -308,31 +325,35 @@ function RequirementList({
         <div>
           <span className="tag tg-test">requirements</span>
           <h1>Requirements</h1>
-          <p>Scan the complete current set, then open a row for version history and editing.</p>
+          <p>Scan the complete current set; expand a row to view, edit, and manage it in place.</p>
         </div>
         <b>{requirements.data?.length || 0}</b>
       </header>
       <div className="entity-rows">
         {requirements.data?.map((requirement: Requirement) => {
           const item = treeItems.get(requirement.id);
+          const open = expanded.has(requirement.id);
           return (
-            <button
-              className="entity-row requirement-row"
-              onClick={() => item && onOpen(item)}
-              disabled={!item}
-              key={requirement.id}
-            >
-              <span className={`tag ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
-                {requirement.status}
-              </span>
-              <span className="entity-primary">
-                <b>{requirement.id}</b>
-                <span>{requirement.text}</span>
-                <small>{requirement.tags?.join(" · ") || "No tags"}</small>
-              </span>
-              <span className="mono dim">v{requirement.version}</span>
-              <span className="row-arrow">→</span>
-            </button>
+            <div className={`entity-item ${open ? "open" : ""}`} key={requirement.id}>
+              <button
+                className="entity-row requirement-row"
+                onClick={() => item && toggle(requirement.id)}
+                disabled={!item}
+                aria-expanded={open}
+              >
+                <span className={`tag ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
+                  {requirement.status}
+                </span>
+                <span className="entity-primary">
+                  <b>{requirement.id}</b>
+                  <span>{requirement.text}</span>
+                  <small>{requirement.tags?.join(" · ") || "No tags"}</small>
+                </span>
+                <span className="mono dim">v{requirement.version}</span>
+                <span className="row-arrow">{open ? "▾" : "▸"}</span>
+              </button>
+              {open && item && <InlineDetail projectRef={projectRef} item={item} refresh={refresh} />}
+            </div>
           );
         })}
         {!requirements.data?.length && <div className="empty-state">No requirements yet.</div>}
@@ -341,46 +362,65 @@ function RequirementList({
   );
 }
 
-function TestSuiteList({items, onOpen}: {items: TreeItem[]; onOpen: (item: TreeItem) => void}) {
+function TestSuiteList({projectRef, items, refresh}: {projectRef: string; items: TreeItem[]; refresh: () => void}) {
   const testCount = items.reduce((count, item) => count + (item.children?.length || 0), 0);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  function toggle(key: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
   return (
     <div className="entity-list">
       <header className="entity-list-header">
         <div>
           <span className="tag tg-test">test suites</span>
           <h1>Test suites</h1>
-          <p>Review every suite and case from one surface; open any row for its typed detail.</p>
+          <p>Review every suite and case from one surface; expand any row to inspect it in place.</p>
         </div>
         <b>{items.length} <small>suites</small><br />{testCount} <small>cases</small></b>
       </header>
       <div className="suite-list">
-        {items.map((suite) => (
-          <section className="suite-list-card" key={suite.ref}>
-            <button className="suite-list-heading" onClick={() => onOpen(suite)}>
-              <span className={`tag ${suite.status === "incomplete" ? "tg-log" : "tg-doc"}`}>
-                {suite.status || "ready"}
-              </span>
-              <span className="entity-primary">
-                <b>{suite.name}</b>
-                <small>{suite.ref}</small>
-              </span>
-              <span className="mono dim">v{suite.version}</span>
-              <span>{suite.children?.length || 0} cases</span>
-              <span className="row-arrow">→</span>
-            </button>
-            <div className="suite-list-cases">
-              {suite.children?.map((testCase) => (
-                <button onClick={() => onOpen(testCase)} key={testCase.ref}>
-                  <span className="node-dot test-case" />
-                  <b>{testCase.name}</b>
-                  <span className="mono dim">v{testCase.version}</span>
-                  <span className="row-arrow">→</span>
-                </button>
-              ))}
-              {!suite.children?.length && <div className="tree-empty">No test cases</div>}
-            </div>
-          </section>
-        ))}
+        {items.map((suite) => {
+          const suiteOpen = expanded.has(tabKey(suite));
+          return (
+            <section className="suite-list-card" key={suite.ref}>
+              <button className="suite-list-heading" onClick={() => toggle(tabKey(suite))} aria-expanded={suiteOpen}>
+                <span className={`tag ${suite.status === "incomplete" ? "tg-log" : "tg-doc"}`}>
+                  {suite.status || "ready"}
+                </span>
+                <span className="entity-primary">
+                  <b>{suite.name}</b>
+                  <small>{suite.ref}</small>
+                </span>
+                <span className="mono dim">v{suite.version}</span>
+                <span>{suite.children?.length || 0} cases</span>
+                <span className="row-arrow">{suiteOpen ? "▾" : "▸"}</span>
+              </button>
+              {suiteOpen && <InlineDetail projectRef={projectRef} item={suite} refresh={refresh} />}
+              <div className="suite-list-cases">
+                {suite.children?.map((testCase) => {
+                  const caseOpen = expanded.has(tabKey(testCase));
+                  return (
+                    <div className={`entity-item ${caseOpen ? "open" : ""}`} key={testCase.ref}>
+                      <button onClick={() => toggle(tabKey(testCase))} aria-expanded={caseOpen}>
+                        <span className="node-dot test-case" />
+                        <b>{testCase.name}</b>
+                        <span className="mono dim">v{testCase.version}</span>
+                        <span className="row-arrow">{caseOpen ? "▾" : "▸"}</span>
+                      </button>
+                      {caseOpen && <InlineDetail projectRef={projectRef} item={testCase} refresh={refresh} />}
+                    </div>
+                  );
+                })}
+                {!suite.children?.length && <div className="tree-empty">No test cases</div>}
+              </div>
+            </section>
+          );
+        })}
         {!items.length && <div className="empty-state">No test suites yet.</div>}
       </div>
     </div>

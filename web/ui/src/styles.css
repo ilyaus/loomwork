@@ -706,7 +706,7 @@ textarea {
 
 .entity-row,
 .suite-list-heading,
-.suite-list-cases > button {
+.suite-list-cases .entity-item > button {
   width: 100%;
   border: 1px solid var(--border);
   color: var(--text);
@@ -727,7 +727,7 @@ textarea {
 
 .entity-row:hover,
 .suite-list-heading:hover,
-.suite-list-cases > button:hover {
+.suite-list-cases .entity-item > button:hover {
   border-color: var(--dim);
   background: var(--panel2);
 }
@@ -789,7 +789,7 @@ textarea {
   background: var(--bg);
 }
 
-.suite-list-cases > button {
+.suite-list-cases .entity-item > button {
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) 55px 20px;
   gap: 12px;
@@ -800,8 +800,42 @@ textarea {
   border-bottom: 1px solid var(--border);
 }
 
-.suite-list-cases > button:last-child {
+.suite-list-cases .entity-item:last-child > button {
   border-bottom: 0;
+}
+
+.entity-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.entity-item.open > .entity-row {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-color: var(--dim);
+}
+
+.inline-detail {
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 7px 7px;
+  background: var(--panel2);
+}
+
+.suite-list-card > .inline-detail,
+.suite-list-cases .inline-detail {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.inline-detail .structured-viewer {
+  height: auto;
+  padding: 14px;
+}
+
+.inline-detail .requirement-text {
+  min-height: 0;
 }
 
 .structured-viewer > header,
