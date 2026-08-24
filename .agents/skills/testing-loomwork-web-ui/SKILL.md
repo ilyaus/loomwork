@@ -53,9 +53,10 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
 - `/` → project cards plus the new-project form.
 - `/projects/{id}` → the Agent Desktop: resizable entity tree, tabbed viewer area, and agent chat.
 - The project overview tab contains document source linking and requirement creation.
-- Requirements and Test suites are main-area list views opened from the Explorer; their rows expand
-  inline to the typed detail (including requirement editing and status actions) instead of opening
-  separate tabs.
+- Requirements and Test suites are main-area list views opened from the Explorer. Requirement rows
+  stay compact and do not expand: each has Edit (PUT amend-in-place), New version (PATCH
+  supersede-and-bump), and Mark obsolete/active actions, with only the edited row showing its
+  inline text/tag form. Test suite rows still expand inline to the typed detail.
 - The Test suites list exposes every nested test case; reports and artifacts select viewers by
   artifact/media type.
 - The splitter width persists in `localStorage` under `loomwork.projectTreeWidth`.

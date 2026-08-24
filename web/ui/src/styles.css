@@ -717,12 +717,16 @@ textarea {
 
 .entity-row {
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr) 55px 20px;
+  grid-template-columns: 90px minmax(0, 1fr) 55px auto;
   gap: 13px;
   align-items: center;
   min-height: 78px;
   padding: 12px 14px;
   border-radius: 7px;
+}
+
+.requirement-row {
+  cursor: default;
 }
 
 .entity-row:hover,
@@ -764,6 +768,38 @@ textarea {
   color: var(--blue);
   font: 17px var(--mono);
   text-align: right;
+}
+
+.requirement-actions,
+.requirement-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.requirement-actions .btn {
+  min-height: 27px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.requirement-inline-edit {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 7px 7px;
+  background: var(--panel2);
+}
+
+.requirement-inline-edit textarea {
+  min-height: 64px;
+}
+
+.requirement-edit-actions {
+  justify-content: flex-start;
 }
 
 .suite-list-card {
@@ -1267,7 +1303,7 @@ textarea {
   }
 
   .entity-row {
-    grid-template-columns: 80px minmax(0, 1fr) 45px 16px;
+    grid-template-columns: 80px minmax(0, 1fr) 45px auto;
   }
 
   .suite-list-heading {

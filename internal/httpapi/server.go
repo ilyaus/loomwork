@@ -119,6 +119,7 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 	case len(segments) == 4 && segments[0] == "projects" && segments[2] == "requirements":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet:   s.requirementHandler(s.getRequirement),
+			http.MethodPut:   s.requirementHandler(s.amendRequirement),
 			http.MethodPatch: s.requirementHandler(s.updateRequirement),
 		})
 	case len(segments) == 5 && segments[0] == "projects" && segments[2] == "requirements" && segments[4] == "history":

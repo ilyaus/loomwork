@@ -45,6 +45,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  amendRequirement: (ref: string, id: string, body: {text: string; tags: string[]}) =>
+    request<Requirement>(`${projectPath(ref)}/requirements/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   requirementHistory: (ref: string, id: string) =>
     request<Requirement[]>(`${projectPath(ref)}/requirements/${encodeURIComponent(id)}/history`),
   setRequirementStatus: (ref: string, id: string, status: "active" | "obsolete") =>

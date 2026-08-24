@@ -258,6 +258,25 @@
           "404": {"$ref": "#/components/responses/NotFound"}
         }
       },
+      "put": {
+        "tags": ["requirements"],
+        "operationId": "amendRequirement",
+        "summary": "Amend the current requirement version in place.",
+        "description": "Rewrites the current version without changing its version, status, or creation timestamp. Fields left empty inherit from the current version. `status` is rejected — use the status endpoint to change a status.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/RequirementUpdate"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/RequirementVersion"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
       "patch": {
         "tags": ["requirements"],
         "operationId": "updateRequirement",

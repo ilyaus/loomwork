@@ -140,6 +140,31 @@ func (s *Server) updateRequirement(w http.ResponseWriter, r *http.Request, proje
 	writeJSON(w, http.StatusOK, requirement)
 }
 
+// amendRequirement rewrites the current version in place without changing its
+// version or status.
+func (s *Server) amendRequirement(w http.ResponseWriter, r *http.Request, projectRef, requirementID string) {
+	var request requirementRequest
+	if err := decodeBody(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(request.Status) != "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("an amend preserves the current status: use the status endpoint to change a status"))
+		return
+	}
+	spec, err := request.spec()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	requirement, err := s.store.AmendRequirement(projectRef, requirementID, spec)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, requirement)
+}
+
 func (s *Server) requirementHistory(w http.ResponseWriter, _ *http.Request, projectRef, requirementID string) {
 	history, err := s.store.RequirementHistory(projectRef, requirementID)
 	if err != nil {

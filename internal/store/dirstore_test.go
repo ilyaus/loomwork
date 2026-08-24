@@ -164,6 +164,56 @@ func TestRequirementVersioningRetainsEveryVersion(t *testing.T) {
 	}
 }
 
+func TestRequirementAmendKeepsCurrentVersionAndHistory(t *testing.T) {
+	dirStore, _ := seededStore(t)
+	created, err := dirStore.CreateRequirement("workbench", model.RequirementSpec{
+		Text:       "Login rejects an expired password",
+		SourceType: model.SourceTypeADO,
+		SourceRef:  "AB#1234",
+		Origin:     model.RequirementOriginExtracted,
+		Tags:       []string{"auth"},
+		Metadata:   map[string]string{"doc": "spec.md"},
+	})
+	if err != nil {
+		t.Fatalf("CreateRequirement: %v", err)
+	}
+	createdAt := created.CreatedAt
+
+	amended, err := dirStore.AmendRequirement("workbench", created.ID, model.RequirementSpec{
+		Text: "Login rejects an expired password with a clear message",
+	})
+	if err != nil {
+		t.Fatalf("AmendRequirement: %v", err)
+	}
+	if amended.Version != created.Version || amended.Status != created.Status || !amended.CreatedAt.Equal(createdAt) {
+		t.Fatalf("amended = %+v, want version, status, and created_at preserved", amended)
+	}
+	if amended.SourceType != created.SourceType || amended.SourceRef != created.SourceRef ||
+		amended.Origin != created.Origin || strings.Join(amended.Tags, ",") != "auth" ||
+		amended.Metadata["doc"] != "spec.md" {
+		t.Fatalf("amended = %+v, want inherited source fields", amended)
+	}
+	history, err := dirStore.RequirementHistory("workbench", created.ID)
+	if err != nil {
+		t.Fatalf("RequirementHistory: %v", err)
+	}
+	if len(history) != 1 || history[0].Text != amended.Text {
+		t.Fatalf("history = %+v, want one amended version", history)
+	}
+
+	if _, err := dirStore.UpdateRequirement("workbench", created.ID, model.RequirementSpec{Text: "A newer version"}); err != nil {
+		t.Fatalf("UpdateRequirement: %v", err)
+	}
+	superseded, err := dirStore.LoadRequirement("workbench", created.ID, 1)
+	if err != nil {
+		t.Fatalf("LoadRequirement superseded: %v", err)
+	}
+	if _, err := superseded.Amend(model.RequirementSpec{Text: "An old version"}); err == nil ||
+		!strings.Contains(err.Error(), "current version") || !strings.Contains(err.Error(), "new version") {
+		t.Fatalf("Amend superseded error = %v, want current-version guidance", err)
+	}
+}
+
 func TestRequirementStatusTransitionsThroughTheStore(t *testing.T) {
 	dirStore, _ := seededStore(t)
 	created, err := dirStore.CreateRequirement("workbench", model.RequirementSpec{Text: "Password reset emails arrive within a minute"})

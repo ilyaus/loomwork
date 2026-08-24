@@ -294,6 +294,8 @@ function InlineDetail({projectRef, item, refresh}: {projectRef: string; item: Tr
   );
 }
 
+type RequirementEditMode = "amend" | "new-version";
+
 function RequirementList({
   projectRef,
   items,
@@ -308,14 +310,70 @@ function RequirementList({
     queryFn: () => api.listRequirements(projectRef),
   });
   const treeItems = useMemo(() => new Map(items.map((item) => [item.ref, item])), [items]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  function toggle(ref: string) {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(ref)) next.delete(ref);
-      else next.add(ref);
-      return next;
-    });
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<{id: string; mode: RequirementEditMode} | null>(null);
+  const [text, setText] = useState("");
+  const [tags, setTags] = useState("");
+  const save = useMutation({
+    mutationFn: () => {
+      if (!editing) throw new Error("no requirement is being edited");
+      const body = {
+        text,
+        tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+      };
+      return editing.mode === "amend"
+        ? api.amendRequirement(projectRef, editing.id, body)
+        : api.updateRequirement(projectRef, editing.id, body);
+    },
+    onSuccess: async (updated) => {
+      const item = treeItems.get(updated.id);
+      if (item) {
+        queryClient.setQueryData(
+          ["item", projectRef, item.family, item.ref],
+          (current: unknown) => current && typeof current === "object"
+            ? {...current, version: updated.version, body: updated}
+            : current,
+        );
+      }
+      setEditing(null);
+      await queryClient.invalidateQueries({queryKey: ["requirements", projectRef]});
+      await queryClient.invalidateQueries({queryKey: ["item", projectRef]});
+      await queryClient.invalidateQueries({queryKey: ["requirement-history", projectRef, updated.id]});
+      refresh();
+    },
+  });
+  const status = useMutation({
+    mutationFn: ({id, next}: {id: string; next: "active" | "obsolete"}) =>
+      api.setRequirementStatus(projectRef, id, next),
+    onSuccess: async (updated) => {
+      const item = treeItems.get(updated.id);
+      if (item) {
+        queryClient.setQueryData(
+          ["item", projectRef, item.family, item.ref],
+          (current: unknown) => current && typeof current === "object"
+            ? {...current, version: updated.version, body: updated}
+            : current,
+        );
+      }
+      await queryClient.invalidateQueries({queryKey: ["requirements", projectRef]});
+      await queryClient.invalidateQueries({queryKey: ["item", projectRef]});
+      await queryClient.invalidateQueries({queryKey: ["requirement-history", projectRef, updated.id]});
+      refresh();
+    },
+  });
+  function startEditing(requirement: Requirement, mode: RequirementEditMode) {
+    setEditing({id: requirement.id, mode});
+    setText(requirement.text);
+    setTags((requirement.tags || []).join(", "));
+  }
+  function cancelEditing() {
+    setEditing(null);
+    setText("");
+    setTags("");
+  }
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    save.mutate();
   }
   if (requirements.isLoading) return <div className="empty-state">Loading requirements…</div>;
   if (requirements.error) return <div className="error-panel">{requirements.error.message}</div>;
@@ -325,22 +383,16 @@ function RequirementList({
         <div>
           <span className="tag tg-test">requirements</span>
           <h1>Requirements</h1>
-          <p>Scan the complete current set; expand a row to view, edit, and manage it in place.</p>
+          <p>Scan the complete current set; edit and manage each requirement in place.</p>
         </div>
         <b>{requirements.data?.length || 0}</b>
       </header>
       <div className="entity-rows">
         {requirements.data?.map((requirement: Requirement) => {
-          const item = treeItems.get(requirement.id);
-          const open = expanded.has(requirement.id);
+          const activeEdit = editing?.id === requirement.id;
           return (
-            <div className={`entity-item ${open ? "open" : ""}`} key={requirement.id}>
-              <button
-                className="entity-row requirement-row"
-                onClick={() => item && toggle(requirement.id)}
-                disabled={!item}
-                aria-expanded={open}
-              >
+            <div className="entity-item" key={requirement.id}>
+              <div className="entity-row requirement-row">
                 <span className={`tag ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
                   {requirement.status}
                 </span>
@@ -350,9 +402,35 @@ function RequirementList({
                   <small>{requirement.tags?.join(" · ") || "No tags"}</small>
                 </span>
                 <span className="mono dim">v{requirement.version}</span>
-                <span className="row-arrow">{open ? "▾" : "▸"}</span>
-              </button>
-              {open && item && <InlineDetail projectRef={projectRef} item={item} refresh={refresh} />}
+                <span className="requirement-actions">
+                  <button className="btn" onClick={() => startEditing(requirement, "amend")} disabled={activeEdit || save.isPending}>
+                    Edit
+                  </button>
+                  <button className="btn" onClick={() => startEditing(requirement, "new-version")} disabled={activeEdit || save.isPending}>
+                    New version
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => status.mutate({id: requirement.id, next: requirement.status === "active" ? "obsolete" : "active"})}
+                    disabled={status.isPending || activeEdit}
+                  >
+                    Mark {requirement.status === "active" ? "obsolete" : "active"}
+                  </button>
+                </span>
+              </div>
+              {activeEdit && (
+                <form className="requirement-inline-edit" onSubmit={submit}>
+                  <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} required />
+                  <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="tags, comma-separated" />
+                  <div className="requirement-edit-actions">
+                    <button className="btn primary" disabled={save.isPending}>
+                      {editing?.mode === "amend" ? "Save" : "Save new version"}
+                    </button>
+                    <button className="btn" type="button" onClick={cancelEditing} disabled={save.isPending}>Cancel</button>
+                  </div>
+                  {save.error && <div className="error-panel">{save.error.message}</div>}
+                </form>
+              )}
             </div>
           );
         })}
