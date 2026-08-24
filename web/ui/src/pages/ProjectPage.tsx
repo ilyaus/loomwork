@@ -391,7 +391,7 @@ function RequirementList({
         {requirements.data?.map((requirement: Requirement) => {
           const activeEdit = editing?.id === requirement.id;
           return (
-            <div className="entity-item" key={requirement.id}>
+            <div className={`entity-item ${activeEdit ? "editing" : ""}`} key={requirement.id}>
               <div className="entity-row requirement-row">
                 <span className={`tag ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
                   {requirement.status}

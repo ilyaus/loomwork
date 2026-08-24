@@ -729,7 +729,6 @@ textarea {
   cursor: default;
 }
 
-.entity-row:hover,
 .suite-list-heading:hover,
 .suite-list-cases .entity-item > button:hover {
   border-color: var(--dim);
@@ -800,6 +799,12 @@ textarea {
 
 .requirement-edit-actions {
   justify-content: flex-start;
+}
+
+.entity-item.editing > .entity-row {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+  border-color: var(--dim);
 }
 
 .suite-list-card {
