@@ -1413,6 +1413,15 @@ textarea {
     grid-template-columns: minmax(0, 1fr) 45px auto;
   }
 
+  .requirement-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .requirement-row .requirement-actions {
+    justify-content: flex-start;
+  }
+
   .suite-list-heading {
     grid-template-columns: 80px minmax(0, 1fr) 45px 65px 16px;
   }
