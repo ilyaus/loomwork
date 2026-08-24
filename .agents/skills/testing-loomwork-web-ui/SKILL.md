@@ -72,6 +72,10 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
   version" grows history by one, while "Edit" (PUT) leaves history length, version, status, and
   `created_at` untouched. The Active/Obsolete switch must update the current version through the
   status endpoint without inventing history.
+- Narrow viewport: resize with `wmctrl -r :ACTIVE: -e 0,0,0,860,740` to cross the 900px breakpoint
+  (restore with `wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz`). Requirement rows must
+  stack there — the Explorer and Conversation panels keep fixed widths, so the list gets ~200px and
+  a side-by-side row grid overlaps the version chip.
 - Version + source type interaction: create a requirement with a source type and `source_ref`, then
   save a new version editing only the text. The omitted source fields must inherit in the store.
 - `PATCH /requirements/{id}` intentionally rejects a `status` field; status changes go through the
