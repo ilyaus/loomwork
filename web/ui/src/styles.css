@@ -717,7 +717,7 @@ textarea {
 
 .entity-row {
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr) 55px auto;
+  grid-template-columns: minmax(0, 1fr) 55px auto;
   gap: 13px;
   align-items: center;
   min-height: 78px;
@@ -726,7 +726,15 @@ textarea {
 }
 
 .requirement-row {
+  position: relative;
+  padding-top: 24px;
   cursor: default;
+}
+
+.requirement-status-badge {
+  position: absolute;
+  top: 8px;
+  right: 14px;
 }
 
 .suite-list-heading:hover,
@@ -777,6 +785,69 @@ textarea {
   justify-content: flex-end;
 }
 
+.requirement-status-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.requirement-status-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.requirement-status-toggle input:focus-visible + .requirement-switch {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.requirement-switch {
+  position: relative;
+  display: inline-block;
+  width: 26px;
+  height: 15px;
+  border: 1px solid var(--dim);
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.requirement-switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+  transition: transform .15s ease, background .15s ease;
+}
+
+.requirement-status-toggle.active {
+  color: var(--green);
+}
+
+.requirement-status-toggle.active .requirement-switch {
+  border-color: var(--green);
+}
+
+.requirement-status-toggle.active .requirement-switch::after {
+  background: var(--green);
+  transform: translateX(11px);
+}
+
+.requirement-status-toggle input:disabled + .requirement-switch,
+.requirement-status-toggle:has(input:disabled) {
+  cursor: default;
+  opacity: .45;
+}
+
 .requirement-actions .btn {
   min-height: 27px;
   padding: 3px 8px;
@@ -795,6 +866,37 @@ textarea {
 
 .requirement-inline-edit textarea {
   min-height: 64px;
+}
+
+.requirement-history {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 7px 7px;
+  background: var(--panel2);
+}
+
+.requirement-history-version {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+}
+
+.requirement-history-version header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.requirement-history-version p {
+  margin: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .requirement-edit-actions {
@@ -1308,7 +1410,7 @@ textarea {
   }
 
   .entity-row {
-    grid-template-columns: 80px minmax(0, 1fr) 45px auto;
+    grid-template-columns: minmax(0, 1fr) 45px auto;
   }
 
   .suite-list-heading {

@@ -54,9 +54,10 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
 - `/projects/{id}` → the Agent Desktop: resizable entity tree, tabbed viewer area, and agent chat.
 - The project overview tab contains document source linking and requirement creation.
 - Requirements and Test suites are main-area list views opened from the Explorer. Requirement rows
-  stay compact and do not expand: each has Edit (PUT amend-in-place), New version (PATCH
-  supersede-and-bump), and Mark obsolete/active actions, with only the edited row showing its
-  inline text/tag form. Test suite rows still expand inline to the typed detail.
+  stay compact and do not expand on row-body click: each has a top-right status badge, Edit (PUT
+  amend-in-place), New version (PATCH supersede-and-bump), an Active/Obsolete checkbox switch
+  (on=active), and a History reveal with read-only retained-version text; only the edited or
+  history row shows its inline panel. Test suite rows still expand inline to the typed detail.
 - The Test suites list exposes every nested test case; reports and artifacts select viewers by
   artifact/media type.
 - The splitter width persists in `localStorage` under `loomwork.projectTreeWidth`.
@@ -66,15 +67,15 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
 ## Assertions that actually catch regressions
 - Source "replace by name": re-submit the same source *name* with a different type/url and assert
   the table still has exactly ONE row with the new values (duplicate row = bug).
-- Requirement versioning: after "Save new version", assert the Requirements list row shows `v2`.
-  The list renders no history, so assert the version semantics against the read-only
-  `GET /api/projects/{ref}/requirements/{id}/history` endpoint from the shell: "New version" grows
-  history by one with the previous version `superseded` and its **old text preserved**, while "Edit"
-  (PUT) leaves history length, version, status, and `created_at` untouched.
+- Requirement versioning: after "Save new version", assert the Requirements list row shows `v2` and
+  its History reveal shows `v2 ACTIVE` above `v1 SUPERSEDED` with the **old text preserved**. "New
+  version" grows history by one, while "Edit" (PUT) leaves history length, version, status, and
+  `created_at` untouched. The Active/Obsolete switch must update the current version through the
+  status endpoint without inventing history.
 - Version + source type interaction: create a requirement with a source type and `source_ref`, then
   save a new version editing only the text. The omitted source fields must inherit in the store.
 - `PATCH /requirements/{id}` intentionally rejects a `status` field; status changes go through the
-  separate `.../status` endpoint (the "Mark obsolete / Mark active" button).
+  separate `.../status` endpoint (the Active/Obsolete checkbox switch).
 - Tree/viewer fallback: open a free-form artifact with an unknown media type and assert raw content
   renders instead of a blank viewer.
 - HTML safety: open a `text/html` artifact and assert it is inside a sandboxed iframe. A

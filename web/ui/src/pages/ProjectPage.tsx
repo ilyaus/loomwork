@@ -312,8 +312,14 @@ function RequirementList({
   const treeItems = useMemo(() => new Map(items.map((item) => [item.ref, item])), [items]);
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<{id: string; mode: RequirementEditMode} | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [tags, setTags] = useState("");
+  const history = useQuery({
+    queryKey: ["requirement-history", projectRef, historyId || ""],
+    queryFn: () => api.requirementHistory(projectRef, historyId || ""),
+    enabled: Boolean(historyId),
+  });
   const save = useMutation({
     mutationFn: () => {
       if (!editing) throw new Error("no requirement is being edited");
@@ -362,9 +368,14 @@ function RequirementList({
     },
   });
   function startEditing(requirement: Requirement, mode: RequirementEditMode) {
+    setHistoryId(null);
     setEditing({id: requirement.id, mode});
     setText(requirement.text);
     setTags((requirement.tags || []).join(", "));
+  }
+  function toggleHistory(id: string) {
+    setEditing(null);
+    setHistoryId((current) => current === id ? null : id);
   }
   function cancelEditing() {
     setEditing(null);
@@ -390,10 +401,11 @@ function RequirementList({
       <div className="entity-rows">
         {requirements.data?.map((requirement: Requirement) => {
           const activeEdit = editing?.id === requirement.id;
+          const activeHistory = historyId === requirement.id;
           return (
             <div className={`entity-item ${activeEdit ? "editing" : ""}`} key={requirement.id}>
               <div className="entity-row requirement-row">
-                <span className={`tag ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
+                <span className={`tag requirement-status-badge ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
                   {requirement.status}
                 </span>
                 <span className="entity-primary">
@@ -409,13 +421,20 @@ function RequirementList({
                   <button className="btn" onClick={() => startEditing(requirement, "new-version")} disabled={activeEdit || save.isPending}>
                     New version
                   </button>
-                  <button
-                    className="btn"
-                    onClick={() => status.mutate({id: requirement.id, next: requirement.status === "active" ? "obsolete" : "active"})}
-                    disabled={status.isPending || activeEdit}
-                  >
-                    Mark {requirement.status === "active" ? "obsolete" : "active"}
+                  <button className="btn" onClick={() => toggleHistory(requirement.id)} disabled={activeEdit || save.isPending}>
+                    {activeHistory ? "Hide history" : "History"}
                   </button>
+                  <label className={`requirement-status-toggle ${requirement.status === "active" ? "active" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={requirement.status === "active"}
+                      onChange={(event) => status.mutate({id: requirement.id, next: event.currentTarget.checked ? "active" : "obsolete"})}
+                      disabled={status.isPending || activeEdit}
+                      aria-label={`${requirement.id} status: ${requirement.status === "active" ? "active" : "obsolete"}`}
+                    />
+                    <span className="requirement-switch" aria-hidden="true" />
+                    <span>{requirement.status === "active" ? "Active" : "Obsolete"}</span>
+                  </label>
                 </span>
               </div>
               {activeEdit && (
@@ -430,6 +449,21 @@ function RequirementList({
                   </div>
                   {save.error && <div className="error-panel">{save.error.message}</div>}
                 </form>
+              )}
+              {activeHistory && (
+                <div className="requirement-history">
+                  {history.isLoading && <div className="empty-state">Loading history…</div>}
+                  {history.error && <div className="error-panel">{history.error.message}</div>}
+                  {history.data?.map((version) => (
+                    <article className="requirement-history-version" key={version.version}>
+                      <header>
+                        <span className="mono">v{version.version}</span>
+                        <span className={`tag ${version.status === "active" ? "tg-doc" : "tg-log"}`}>{version.status}</span>
+                      </header>
+                      <p>{version.text}</p>
+                    </article>
+                  ))}
+                </div>
               )}
             </div>
           );
