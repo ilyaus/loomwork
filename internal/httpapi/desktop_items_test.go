@@ -112,6 +112,9 @@ func TestProjectItemsListAndReadViewerDocuments(t *testing.T) {
 	if len(tree.Groups[3].Items[0].Children) != 1 {
 		t.Fatalf("suite children = %+v, want one test case", tree.Groups[3].Items[0].Children)
 	}
+	if tree.Groups[3].Items[0].Status != "ready" {
+		t.Fatalf("suite status = %q, want ready", tree.Groups[3].Items[0].Status)
+	}
 
 	var document ViewerDocument
 	mustCall(t, handler, http.MethodGet,

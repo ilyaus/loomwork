@@ -128,10 +128,14 @@ func (s *Server) listProjectItems(w http.ResponseWriter, _ *http.Request, projec
 				Version: suite.Version,
 			})
 		}
+		status := "ready"
+		if suite.Incomplete {
+			status = "incomplete"
+		}
 		groups[3].Items = append(groups[3].Items, TreeItem{
 			Ref: suite.SuiteID, Name: firstNonEmpty(suite.Title, suite.SuiteID), Family: familyTestSuites,
 			ArtifactType: "test-suite", MediaType: "application/json", Version: suite.Version,
-			Children: children,
+			Status: status, Children: children,
 		})
 	}
 	for _, report := range reports {

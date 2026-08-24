@@ -4,7 +4,7 @@ import {Link, useParams} from "react-router-dom";
 import {api} from "../api";
 import ChatDock from "../components/ChatDock";
 import {SafeLink, Viewer} from "../components/Viewers";
-import type {DocumentSource, TreeItem} from "../types";
+import type {DocumentSource, Requirement, TreeItem} from "../types";
 
 const splitterKey = "loomwork.projectTreeWidth";
 const minimumTreeWidth = 220;
@@ -13,8 +13,11 @@ const maximumTreeWidth = 480;
 type Tab = {
   key: string;
   item?: TreeItem;
+  family?: string;
   name: string;
 };
+
+const tabKey = (item: TreeItem) => `${item.family}:${item.ref}`;
 
 export default function ProjectPage() {
   const {projectRef = ""} = useParams();
@@ -31,13 +34,23 @@ export default function ProjectPage() {
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({queryKey: ["project", projectRef]});
     void queryClient.invalidateQueries({queryKey: ["project-items", projectRef]});
+    void queryClient.invalidateQueries({queryKey: ["requirements", projectRef]});
   }, [projectRef, queryClient]);
 
   function openItem(item: TreeItem) {
-    const key = `${item.family}:${item.ref}:${item.version || "current"}`;
+    const key = tabKey(item);
     setTabs((current) => current.some((tab) => tab.key === key)
       ? current
       : [...current, {key, item, name: item.name}],
+    );
+    setActiveKey(key);
+  }
+
+  function openFamily(family: string, label: string) {
+    const key = `family:${family}`;
+    setTabs((current) => current.some((tab) => tab.key === key)
+      ? current
+      : [...current, {key, family, name: label}],
     );
     setActiveKey(key);
   }
@@ -73,6 +86,21 @@ export default function ProjectPage() {
   useEffect(() => {
     localStorage.setItem(splitterKey, String(treeWidth));
   }, [treeWidth]);
+  useEffect(() => {
+    if (!tree.data) return;
+    const currentItems = new Map<string, TreeItem>();
+    for (const group of tree.data.groups) {
+      for (const item of group.items) {
+        currentItems.set(tabKey(item), item);
+        for (const child of item.children || []) currentItems.set(tabKey(child), child);
+      }
+    }
+    setTabs((current) => current.map((tab) => {
+      if (!tab.item) return tab;
+      const latest = currentItems.get(tab.key);
+      return latest ? {...tab, item: latest, name: latest.name} : tab;
+    }));
+  }, [tree.data]);
 
   const activeTab = tabs.find((tab) => tab.key === activeKey) || tabs[0];
   const activeArtifactRef = activeTab.item?.family === "artifacts" ? activeTab.item.ref : undefined;
@@ -109,6 +137,7 @@ export default function ProjectPage() {
                 items={group.items}
                 activeKey={activeKey}
                 onOpen={openItem}
+                onOpenFamily={openFamily}
                 key={group.family}
               />
             ))}
@@ -131,7 +160,16 @@ export default function ProjectPage() {
             <div className="viewer-content">
               {activeTab.key === "overview"
                 ? <ProjectOverview projectRef={projectRef} refresh={refresh} />
-                : activeTab.item && <ActiveViewer projectRef={projectRef} item={activeTab.item} refresh={refresh} />}
+                : activeTab.family
+                  ? (
+                    <FamilyList
+                      family={activeTab.family}
+                      projectRef={projectRef}
+                      items={tree.data.groups.find((group) => group.family === activeTab.family)?.items || []}
+                      onOpen={openItem}
+                    />
+                  )
+                  : activeTab.item && <ActiveViewer projectRef={projectRef} item={activeTab.item} refresh={refresh} />}
             </div>
           </div>
           <ChatDock projectRef={projectRef} activeArtifactRef={activeArtifactRef} />
@@ -142,18 +180,36 @@ export default function ProjectPage() {
 }
 
 function TreeGroup({
+  family,
   label,
   items,
   activeKey,
   onOpen,
+  onOpenFamily,
 }: {
   family: string;
   label: string;
   items: TreeItem[];
   activeKey: string;
   onOpen: (item: TreeItem) => void;
+  onOpenFamily: (family: string, label: string) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const listFamily = family === "requirements" || family === "test-suites";
+  if (listFamily) {
+    return (
+      <section className="tree-group">
+        <button
+          className={`tree-group-label family-link ${activeKey === `family:${family}` ? "selected" : ""}`}
+          onClick={() => onOpenFamily(family, label)}
+        >
+          <span>▤</span>
+          <b>{label}</b>
+          <small>{items.length}</small>
+        </button>
+      </section>
+    );
+  }
   return (
     <section className="tree-group">
       <button className="tree-group-label" onClick={() => setOpen((value) => !value)}>
@@ -184,7 +240,7 @@ function TreeNode({item, activeKey, onOpen, nested = false}: {
   onOpen: (item: TreeItem) => void;
   nested?: boolean;
 }) {
-  const key = `${item.family}:${item.ref}:${item.version || "current"}`;
+  const key = tabKey(item);
   return (
     <button className={`tree-node ${nested ? "nested" : ""} ${activeKey === key ? "selected" : ""}`} onClick={() => onOpen(item)}>
       <span className={`node-dot ${item.artifactType}`} />
@@ -197,8 +253,8 @@ function TreeNode({item, activeKey, onOpen, nested = false}: {
 
 function ActiveViewer({projectRef, item, refresh}: {projectRef: string; item: TreeItem; refresh: () => void}) {
   const document = useQuery({
-    queryKey: ["item", projectRef, item.family, item.ref, item.version],
-    queryFn: () => api.projectItem(projectRef, item.family, item.ref, item.version),
+    queryKey: ["item", projectRef, item.family, item.ref],
+    queryFn: () => api.projectItem(projectRef, item.family, item.ref),
   });
   if (document.isLoading) return <div className="empty-state">Opening {item.name}…</div>;
   if (document.error) return <div className="error-panel">{document.error.message}</div>;
@@ -210,6 +266,124 @@ function ActiveViewer({projectRef, item, refresh}: {projectRef: string; item: Tr
       projectRef={projectRef}
       refresh={refresh}
     />
+  );
+}
+
+function FamilyList({
+  family,
+  projectRef,
+  items,
+  onOpen,
+}: {
+  family: string;
+  projectRef: string;
+  items: TreeItem[];
+  onOpen: (item: TreeItem) => void;
+}) {
+  if (family === "requirements") {
+    return <RequirementList projectRef={projectRef} items={items} onOpen={onOpen} />;
+  }
+  return <TestSuiteList items={items} onOpen={onOpen} />;
+}
+
+function RequirementList({
+  projectRef,
+  items,
+  onOpen,
+}: {
+  projectRef: string;
+  items: TreeItem[];
+  onOpen: (item: TreeItem) => void;
+}) {
+  const requirements = useQuery({
+    queryKey: ["requirements", projectRef],
+    queryFn: () => api.listRequirements(projectRef),
+  });
+  const treeItems = useMemo(() => new Map(items.map((item) => [item.ref, item])), [items]);
+  if (requirements.isLoading) return <div className="empty-state">Loading requirements…</div>;
+  if (requirements.error) return <div className="error-panel">{requirements.error.message}</div>;
+  return (
+    <div className="entity-list">
+      <header className="entity-list-header">
+        <div>
+          <span className="tag tg-test">requirements</span>
+          <h1>Requirements</h1>
+          <p>Scan the complete current set, then open a row for version history and editing.</p>
+        </div>
+        <b>{requirements.data?.length || 0}</b>
+      </header>
+      <div className="entity-rows">
+        {requirements.data?.map((requirement: Requirement) => {
+          const item = treeItems.get(requirement.id);
+          return (
+            <button
+              className="entity-row requirement-row"
+              onClick={() => item && onOpen(item)}
+              disabled={!item}
+              key={requirement.id}
+            >
+              <span className={`tag ${requirement.status === "active" ? "tg-doc" : "tg-log"}`}>
+                {requirement.status}
+              </span>
+              <span className="entity-primary">
+                <b>{requirement.id}</b>
+                <span>{requirement.text}</span>
+                <small>{requirement.tags?.join(" · ") || "No tags"}</small>
+              </span>
+              <span className="mono dim">v{requirement.version}</span>
+              <span className="row-arrow">→</span>
+            </button>
+          );
+        })}
+        {!requirements.data?.length && <div className="empty-state">No requirements yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+function TestSuiteList({items, onOpen}: {items: TreeItem[]; onOpen: (item: TreeItem) => void}) {
+  const testCount = items.reduce((count, item) => count + (item.children?.length || 0), 0);
+  return (
+    <div className="entity-list">
+      <header className="entity-list-header">
+        <div>
+          <span className="tag tg-test">test suites</span>
+          <h1>Test suites</h1>
+          <p>Review every suite and case from one surface; open any row for its typed detail.</p>
+        </div>
+        <b>{items.length} <small>suites</small><br />{testCount} <small>cases</small></b>
+      </header>
+      <div className="suite-list">
+        {items.map((suite) => (
+          <section className="suite-list-card" key={suite.ref}>
+            <button className="suite-list-heading" onClick={() => onOpen(suite)}>
+              <span className={`tag ${suite.status === "incomplete" ? "tg-log" : "tg-doc"}`}>
+                {suite.status || "ready"}
+              </span>
+              <span className="entity-primary">
+                <b>{suite.name}</b>
+                <small>{suite.ref}</small>
+              </span>
+              <span className="mono dim">v{suite.version}</span>
+              <span>{suite.children?.length || 0} cases</span>
+              <span className="row-arrow">→</span>
+            </button>
+            <div className="suite-list-cases">
+              {suite.children?.map((testCase) => (
+                <button onClick={() => onOpen(testCase)} key={testCase.ref}>
+                  <span className="node-dot test-case" />
+                  <b>{testCase.name}</b>
+                  <span className="mono dim">v{testCase.version}</span>
+                  <span className="row-arrow">→</span>
+                </button>
+              ))}
+              {!suite.children?.length && <div className="tree-empty">No test cases</div>}
+            </div>
+          </section>
+        ))}
+        {!items.length && <div className="empty-state">No test suites yet.</div>}
+      </div>
+    </div>
   );
 }
 

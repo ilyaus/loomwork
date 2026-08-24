@@ -277,16 +277,26 @@ function RequirementViewer({document, projectRef, refresh}: ViewerProps) {
       text,
       tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
     }),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(
+        ["item", projectRef, document.family, document.ref],
+        {...document, version: updated.version, body: updated},
+      );
       setEditing(false);
-      await queryClient.invalidateQueries({queryKey: ["item", projectRef]});
+      await queryClient.invalidateQueries({queryKey: ["requirements", projectRef]});
+      await queryClient.invalidateQueries({queryKey: ["requirement-history", projectRef, requirement.id]});
       refresh();
     },
   });
   const status = useMutation({
     mutationFn: (next: "active" | "obsolete") => api.setRequirementStatus(projectRef, requirement.id, next),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({queryKey: ["item", projectRef]});
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(
+        ["item", projectRef, document.family, document.ref],
+        {...document, version: updated.version, body: updated},
+      );
+      await queryClient.invalidateQueries({queryKey: ["requirements", projectRef]});
+      await queryClient.invalidateQueries({queryKey: ["requirement-history", projectRef, requirement.id]});
       refresh();
     },
   });

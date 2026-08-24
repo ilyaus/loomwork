@@ -36,8 +36,10 @@ Gotchas:
 - `/` → project cards plus the new-project form.
 - `/projects/{id}` → the Agent Desktop: resizable entity tree, tabbed viewer area, and agent chat.
 - The project overview tab contains document source linking and requirement creation.
-- Selecting a requirement opens its current body, version history, new-version form, and status action.
-- Test suites expose nested test-case nodes; reports and artifacts select viewers by artifact/media type.
+- Requirements and Test suites are main-area list views opened from the Explorer; their rows open
+  individual typed detail tabs.
+- The Test suites list exposes every nested test case; reports and artifacts select viewers by
+  artifact/media type.
 - The splitter width persists in `localStorage` under `loomwork.projectTreeWidth`.
 - Server-side SPA fallback (`internal/httpapi/server.go` `uiHandler`) rewrites unknown paths to
   `index.html`, so direct navigation to `/projects/{id}` must render that project.
@@ -45,8 +47,9 @@ Gotchas:
 ## Assertions that actually catch regressions
 - Source "replace by name": re-submit the same source *name* with a different type/url and assert
   the table still has exactly ONE row with the new values (duplicate row = bug).
-- Requirement versioning: after "Save new version", assert list shows `v2` AND history shows
-  `v2 ACTIVE` above `v1 SUPERSEDED` with the **old text preserved**.
+- Requirement versioning: after "Save new version", assert the already-open detail rebinds to `v2`,
+  the Requirements list shows `v2`, and history shows `v2 ACTIVE` above `v1 SUPERSEDED` with the
+  **old text preserved**.
 - Version + source type interaction: create a requirement with a source type and `source_ref`, then
   save a new version editing only the text. The omitted source fields must inherit in the store.
 - `PATCH /requirements/{id}` intentionally rejects a `status` field; status changes go through the

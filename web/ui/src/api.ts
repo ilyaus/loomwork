@@ -38,6 +38,8 @@ export const api = {
     request<DocumentSource[]>(`${projectPath(ref)}/sources`, {method: "POST", body: JSON.stringify(source)}),
   createRequirement: (ref: string, body: {text: string; tags: string[]}) =>
     request<Requirement>(`${projectPath(ref)}/requirements`, {method: "POST", body: JSON.stringify(body)}),
+  listRequirements: (ref: string) =>
+    request<Requirement[]>(`${projectPath(ref)}/requirements`),
   updateRequirement: (ref: string, id: string, body: {text: string; tags: string[]}) =>
     request<Requirement>(`${projectPath(ref)}/requirements/${encodeURIComponent(id)}`, {
       method: "PATCH",
