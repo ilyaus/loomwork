@@ -32,6 +32,23 @@ Gotchas:
 - Workspace state persists in `$LOOMWORK_HOME`; to re-test empty states, point at a new dir
   rather than deleting files under a running server.
 
+## Seeding fixtures that exercise every Explorer family
+Seed with the CLI (`--home <workspace>`), then confirm the shape with
+`curl -s 127.0.0.1:8787/api/projects/<ref>/items`. Gotchas that cost real time:
+- `requirement create` assigns 3-digit ids (`req-001`, `req-002`, …), not `req-0001`. A suite
+  fixture that links `req-0001` will import as INCOMPLETE — useful on purpose (it exercises the
+  incomplete chip/reason), but do not then assert a working requirement link.
+- `test-suite import --file` decodes with `DisallowUnknownFields`; the cases array must be
+  `"cases"` (`internal/model/testsuite.go`). `"tests"` fails with `unknown field "tests"`.
+- The **Reports** family is NOT fed by `artifact add`. It reads the project's on-disk `reports/`
+  dir (`store.ReportsDirName`), so copy report files into
+  `$LOOMWORK_HOME/projects/<prj-id>/reports/`. `artifact add --type test-result` only populates
+  Artifacts. Seed one JSON report (report viewer) plus one `.csv` (unknown media type → raw
+  fallback) to cover both viewer paths.
+- Never combine `pkill` and `setsid nohup ... & disown` in one exec call: the pkill kills the
+  shell before the server detaches and the port ends up empty. Use two separate calls.
+- `/api/workspace` may return an empty body; use `/api/projects` to confirm the server is live.
+
 ## UI map (BrowserRouter React SPA)
 - `/` → project cards plus the new-project form.
 - `/projects/{id}` → the Agent Desktop: resizable entity tree, tabbed viewer area, and agent chat.

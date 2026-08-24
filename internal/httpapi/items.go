@@ -120,10 +120,15 @@ func (s *Server) listProjectItems(w http.ResponseWriter, _ *http.Request, projec
 		})
 	}
 	for _, suite := range suites {
-		children := make([]TreeItem, 0, len(suite.CaseIDs))
-		for _, caseID := range suite.CaseIDs {
+		detailed, err := s.store.LoadTestSuite(projectRef, suite.SuiteID, suite.Version)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		children := make([]TreeItem, 0, len(detailed.Cases))
+		for _, testCase := range detailed.Cases {
 			children = append(children, TreeItem{
-				Ref: suite.SuiteID + "~" + caseID, Name: caseID, Family: familyTestCases,
+				Ref: suite.SuiteID + "~" + testCase.ID, Name: firstNonEmpty(testCase.Name, testCase.ID), Family: familyTestCases,
 				ArtifactType: "test-case", MediaType: "application/vnd.loomwork.test-case+json",
 				Version: suite.Version,
 			})

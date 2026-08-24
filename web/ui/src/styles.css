@@ -746,6 +746,13 @@ textarea {
   white-space: nowrap;
 }
 
+.requirement-row .entity-primary > span {
+  overflow: visible;
+  line-height: 1.45;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .entity-primary small {
   overflow: hidden;
   color: var(--muted);
