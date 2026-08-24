@@ -3,7 +3,10 @@ import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {api} from "../api";
 import type {Requirement, ViewerDocument} from "../types";
 
-const SwaggerUI = lazy(() => import("swagger-ui-react"));
+const SwaggerUI = lazy(async () => {
+  await import("../swagger-ui-styles");
+  return import("swagger-ui-react");
+});
 
 export type ViewerProps = {
   document: ViewerDocument;
