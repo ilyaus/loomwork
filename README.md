@@ -46,7 +46,8 @@ execution contract, and the browser UI are phases 2–5.
 ## Build
 
 ```bash
-make build      # builds bin/loomwork with CGO_ENABLED=0
+make build      # builds React/Vite UI, then bin/loomwork with CGO_ENABLED=0
+make ui         # builds web/ui into web/dist
 make test       # runs the unit test suite
 make vet fmt    # static analysis and formatting
 ```
@@ -160,16 +161,15 @@ loomwork serve [--addr 127.0.0.1:8787]
 ```
 
 Serves a single-page workbench UI and its JSON API over the same workspace the
-CLI uses. The assets are embedded in the binary, so there is nothing to install
-or build separately.
+CLI uses. `make build` compiles the React/Vite app in `web/ui` into `web/dist`
+before embedding it in the binary.
 
-This first increment covers the Phase-1 domain only: the directory-of-projects
-landing view (per-project counts come from the cached `project.json` index, so
-no project scan is needed), a project view with its document source links, and
-requirement management — create, list, inspect version history, save a new
-version, and change status. Last-tested date, requirement coverage, and
-open-gaps counts are rendered as placeholders until later phases populate them.
-LLM surfaces are not exposed yet.
+The browser opens on the directory-of-projects landing view. A project opens an
+agent-desktop shell with a resizable entity tree, tabbed typed viewers, and an
+SSE-backed provider chat dock. The tree exposes requirements, agent definitions,
+override rules, test suites and cases, reports, and free-form artifacts. Project
+overview and requirement viewers retain source linking, requirement creation,
+versioning, history, and status management.
 
 `--addr` accepts a bare port or a loopback address; non-loopback hosts are
 rejected. Loomwork is local-first and single-user, so the server has no

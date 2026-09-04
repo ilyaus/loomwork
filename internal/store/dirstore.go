@@ -46,6 +46,9 @@ type RequirementStore interface {
 	// UpdateRequirement writes the next version and marks the previous one
 	// superseded.
 	UpdateRequirement(projectRef, requirementID string, spec model.RequirementSpec) (*model.Requirement, error)
+	// AmendRequirement rewrites the current version in place without changing
+	// its version, status, or history.
+	AmendRequirement(projectRef, requirementID string, spec model.RequirementSpec) (*model.Requirement, error)
 	// SetRequirementStatus updates one version's status; version 0 means the
 	// current version.
 	SetRequirementStatus(projectRef, requirementID string, version int, status model.RequirementStatus) (*model.Requirement, error)
@@ -402,6 +405,37 @@ func (d *DirStore) UpdateRequirement(projectRef, requirementID string, spec mode
 		return nil, err
 	}
 	return updated, nil
+}
+
+// AmendRequirement rewrites the current version in place, keeping its history
+// position and status unchanged.
+func (d *DirStore) AmendRequirement(projectRef, requirementID string, spec model.RequirementSpec) (*model.Requirement, error) {
+	var amended *model.Requirement
+	err := d.withRequirements(projectRef, func(project *model.Project, dir string, index *RequirementIndex) error {
+		entry, ok := index.find(requirementID)
+		if !ok {
+			return fmt.Errorf("requirement %q in project %s: %w", requirementID, project.Name, ErrNotFound)
+		}
+		current, err := readRequirement(dir, entry.ID, entry.CurrentVersion)
+		if err != nil {
+			return err
+		}
+		amended, err = current.Amend(spec)
+		if err != nil {
+			return err
+		}
+		if err := writeRequirement(dir, amended); err != nil {
+			return err
+		}
+		entry.Status = amended.Status
+		entry.UpdatedAt = time.Now().UTC()
+		index.upsert(entry)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return amended, nil
 }
 
 // SetRequirementStatus updates the status of one version (0 = current version).

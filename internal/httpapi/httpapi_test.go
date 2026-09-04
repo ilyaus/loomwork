@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -214,6 +215,35 @@ func TestRequirementLifecycleOverHTTP(t *testing.T) {
 	}
 }
 
+func TestRequirementAmendOverHTTP(t *testing.T) {
+	handler := newServer(t)
+	mustCall(t, handler, http.MethodPost, "/api/projects", map[string]string{"name": "checkout"}, nil, http.StatusCreated)
+
+	var created model.Requirement
+	mustCall(t, handler, http.MethodPost, "/api/projects/checkout/requirements", map[string]any{
+		"text": "Cart totals include tax", "source_type": "ado", "source_ref": "AB#12", "tags": []string{"cart"},
+	}, &created, http.StatusCreated)
+
+	var amended model.Requirement
+	mustCall(t, handler, http.MethodPut, "/api/projects/checkout/requirements/req-001", map[string]any{
+		"text": "Cart totals include tax and shipping", "tags": []string{"cart", "checkout"},
+	}, &amended, http.StatusOK)
+	if amended.Version != created.Version || amended.Status != created.Status ||
+		amended.SourceType != created.SourceType || amended.SourceRef != created.SourceRef ||
+		amended.Text != "Cart totals include tax and shipping" {
+		t.Fatalf("amended = %+v, want the current version updated in place", amended)
+	}
+	var history []model.Requirement
+	mustCall(t, handler, http.MethodGet, "/api/projects/checkout/requirements/req-001/history", nil, &history, http.StatusOK)
+	if len(history) != 1 || history[0].Text != amended.Text {
+		t.Fatalf("history = %+v, want one amended version", history)
+	}
+	if got := errorText(t, handler, http.MethodPut, "/api/projects/checkout/requirements/req-001",
+		map[string]any{"text": "Cannot change status here", "status": "obsolete"}, http.StatusBadRequest); !strings.Contains(got, "preserves the current status") {
+		t.Errorf("error = %q, want status-field rejection", got)
+	}
+}
+
 // TestRequirementWireFormatMatchesSchema pins the response shape to
 // docs/schemas/requirement.schema.json, which is the frontend/backend contract.
 func TestRequirementWireFormatMatchesSchema(t *testing.T) {
@@ -299,8 +329,8 @@ func TestErrorResponses(t *testing.T) {
 	}
 
 	recorder := call(t, handler, http.MethodDelete, "/api/projects/checkout/requirements/req-001", nil, nil)
-	if recorder.Code != http.StatusMethodNotAllowed || recorder.Header().Get("Allow") != "GET, PATCH" {
-		t.Errorf("DELETE = %d with Allow %q, want 405 listing GET, PATCH", recorder.Code, recorder.Header().Get("Allow"))
+	if recorder.Code != http.StatusMethodNotAllowed || recorder.Header().Get("Allow") != "GET, PATCH, PUT" {
+		t.Errorf("DELETE = %d with Allow %q, want 405 listing GET, PATCH, PUT", recorder.Code, recorder.Header().Get("Allow"))
 	}
 }
 
@@ -317,14 +347,22 @@ func TestUIAssetsAreServed(t *testing.T) {
 	}
 	handler := server.Handler()
 
-	for _, path := range []string{"/", "/app.js", "/projects/prj-1"} {
+	for _, path := range []string{"/", "/projects/prj-1"} {
 		recorder := call(t, handler, http.MethodGet, path, nil, nil)
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("GET %s = %d, want 200", path, recorder.Code)
 		}
 	}
 	recorder := call(t, handler, http.MethodGet, "/", nil, nil)
-	if !strings.Contains(recorder.Body.String(), "app.js") {
-		t.Errorf("index body = %q, want the app entry point", recorder.Body.String())
+	if !strings.Contains(recorder.Body.String(), `<div id="root"></div>`) {
+		t.Errorf("index body = %q, want the React root", recorder.Body.String())
+	}
+	asset := regexp.MustCompile(`src="([^"]+\.js)"`).FindStringSubmatch(recorder.Body.String())
+	if len(asset) != 2 {
+		t.Fatalf("index body = %q, want a Vite JavaScript asset", recorder.Body.String())
+	}
+	assetRecorder := call(t, handler, http.MethodGet, asset[1], nil, nil)
+	if assetRecorder.Code != http.StatusOK {
+		t.Fatalf("GET %s = %d, want embedded Vite asset", asset[1], assetRecorder.Code)
 	}
 }

@@ -1,16 +1,16 @@
 ---
 name: testing-loomwork-web-ui
-description: How to run and test the loomwork browser UI (loomwork serve + internal/httpapi + embedded web/assets SPA) end-to-end in Chrome, with no auth or external services.
+description: How to build, run, and test the Loomwork React/Vite browser UI and embedded Go HTTP API end-to-end in Chrome, with no auth or external services.
 ---
 
 # Testing the loomwork browser UI
 
 Companion to `testing-loomwork-cli` (that one covers CLI/provider paths). Use this one for
-anything under `internal/httpapi/` or `web/assets/`.
+anything under `internal/httpapi/`, `web/ui/`, or the generated `web/dist/`.
 
 ## Bring it up (no auth, no credentials, no external services)
 ```
-cd <repo> && make build           # CGO_ENABLED=0 go build -o bin/loomwork ./cmd/loomwork
+cd <repo> && make build           # npm ci + Vite build, then static Go binary
 rm -rf /tmp/lw-ui                 # start from a genuinely empty workspace to see empty states
 setsid nohup env LOOMWORK_HOME=/tmp/lw-ui ./bin/loomwork serve --addr 127.0.0.1:8787 \
   > /tmp/serve.log 2>&1 < /dev/null & disown
@@ -24,40 +24,68 @@ Gotchas:
   `ss -ltnp | grep 8787`.
 - Start the server with `setsid ... & disown`; plain `(cmd &)` inside an exec call can die with
   the shell and leave the port free but the UI unreachable.
-- The frontend is embedded via `//go:embed assets` (`web/embed.go`), so **editing `web/assets/*`
-  has no effect until you `make build` again**. Verify which asset the running binary serves with
-  e.g. `curl -s 127.0.0.1:8787/views/project.js | grep -n "source type"` (assets are served at
-  the root, not under `/assets/`).
+- The frontend is embedded from `web/dist` via `//go:embed all:dist`, so **editing `web/ui/*`
+  has no effect in `loomwork serve` until you run `make build` again**. `make ui` is enough to
+  refresh `web/dist`, but the running embedded server still needs a rebuilt binary and restart.
+- For hot reload, run `npm ci && npm run dev` in `web/ui` while a separate `loomwork serve`
+  listens on `127.0.0.1:8787`; Vite proxies `/api`, including project chat SSE, to that server.
 - Workspace state persists in `$LOOMWORK_HOME`; to re-test empty states, point at a new dir
   rather than deleting files under a running server.
 
-## UI map (hash-routed SPA, `web/assets/app.js`)
-- `#/` → projects landing (`views/projects.js`): cards + "New project" form. Testability stats
-  (`last tested`/`coverage`/`open gaps`) are intentionally `—` placeholders until phases 4–5.
-- `#/projects/{id}` → project view (`views/project.js`): document sources table + "+ Link a
-  document source", requirements table + detail/version history + "+ Add a requirement".
-- Forms live inside collapsed `<details>` elements — you must click the `+ ...` summary first.
-- Selects are native `<select>`; click to open, then click the option (two separate clicks).
-- Feedback is a bottom-center toast (`ok` = green ~2.5s, error = red ~8s), so screenshot
-  immediately after a submit or you will miss it.
+## Seeding fixtures that exercise every Explorer family
+Seed with the CLI (`--home <workspace>`), then confirm the shape with
+`curl -s 127.0.0.1:8787/api/projects/<ref>/items`. Gotchas that cost real time:
+- `requirement create` assigns 3-digit ids (`req-001`, `req-002`, …), not `req-0001`. A suite
+  fixture that links `req-0001` will import as INCOMPLETE — useful on purpose (it exercises the
+  incomplete chip/reason), but do not then assert a working requirement link.
+- `test-suite import --file` decodes with `DisallowUnknownFields`; the cases array must be
+  `"cases"` (`internal/model/testsuite.go`). `"tests"` fails with `unknown field "tests"`.
+- The **Reports** family is NOT fed by `artifact add`. It reads the project's on-disk `reports/`
+  dir (`store.ReportsDirName`), so copy report files into
+  `$LOOMWORK_HOME/projects/<prj-id>/reports/`. `artifact add --type test-result` only populates
+  Artifacts. Seed one JSON report (report viewer) plus one `.csv` (unknown media type → raw
+  fallback) to cover both viewer paths.
+- Never combine `pkill` and `setsid nohup ... & disown` in one exec call: the pkill kills the
+  shell before the server detaches and the port ends up empty. Use two separate calls.
+- `/api/workspace` may return an empty body; use `/api/projects` to confirm the server is live.
+
+## UI map (BrowserRouter React SPA)
+- `/` → project cards plus the new-project form.
+- `/projects/{id}` → the Agent Desktop: resizable entity tree, tabbed viewer area, and agent chat.
+- The project overview tab contains document source linking and requirement creation.
+- Requirements and Test suites are main-area list views opened from the Explorer. Requirement rows
+  stay compact and do not expand on row-body click: each has a top-right status badge, Edit (PUT
+  amend-in-place), New version (PATCH supersede-and-bump), an Active/Obsolete checkbox switch
+  (on=active), and a History reveal with read-only retained-version text; only the edited or
+  history row shows its inline panel. Test suite rows still expand inline to the typed detail.
+- The Test suites list exposes every nested test case; reports and artifacts select viewers by
+  artifact/media type.
+- The splitter width persists in `localStorage` under `loomwork.projectTreeWidth`.
 - Server-side SPA fallback (`internal/httpapi/server.go` `uiHandler`) rewrites unknown paths to
-  `index.html`, so `http://127.0.0.1:8787/projects/{id}` (no `#`) serves the app — but with an
-  empty hash it renders the **landing** view, not the project. That is expected, not a bug.
+  `index.html`, so direct navigation to `/projects/{id}` must render that project.
 
 ## Assertions that actually catch regressions
 - Source "replace by name": re-submit the same source *name* with a different type/url and assert
   the table still has exactly ONE row with the new values (duplicate row = bug).
-- Requirement versioning: after "Save new version", assert list shows `v2` AND history shows
-  `v2 ACTIVE` above `v1 SUPERSEDED` with the **old text preserved**.
-- Version + source type interaction (regressed once, see below): create a requirement WITH a
-  source type and `source_ref`, then save a new version editing ONLY the text. The store rejects a
-  `source_ref` with no `source_type`, and `dom.js formValues()` drops empty strings, so if the
-  new-version form's source-type select does not prefill `current.source_type` the PATCH 400s with
-  `requirement source reference "..." needs a source type`. Always exercise the text-only edit path.
+- Requirement versioning: after "Save new version", assert the Requirements list row shows `v2` and
+  its History reveal shows `v2 ACTIVE` above `v1 SUPERSEDED` with the **old text preserved**. "New
+  version" grows history by one, while "Edit" (PUT) leaves history length, version, status, and
+  `created_at` untouched. The Active/Obsolete switch must update the current version through the
+  status endpoint without inventing history.
+- Narrow viewport: resize with `wmctrl -r :ACTIVE: -e 0,0,0,860,740` to cross the 900px breakpoint
+  (restore with `wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz`). Requirement rows must
+  stack there — the Explorer and Conversation panels keep fixed widths, so the list gets ~200px and
+  a side-by-side row grid overlaps the version chip.
+- Version + source type interaction: create a requirement with a source type and `source_ref`, then
+  save a new version editing only the text. The omitted source fields must inherit in the store.
 - `PATCH /requirements/{id}` intentionally rejects a `status` field; status changes go through the
-  separate `.../status` endpoint (the "Mark obsolete / Mark active" button).
-- Status filter: mark the only requirement obsolete, then filter `active` → "No requirements
-  match." and the detail pane resets to its placeholder.
+  separate `.../status` endpoint (the Active/Obsolete checkbox switch).
+- Tree/viewer fallback: open a free-form artifact with an unknown media type and assert raw content
+  renders instead of a blank viewer.
+- HTML safety: open a `text/html` artifact and assert it is inside a sandboxed iframe. A
+  `javascript:` source link must render as inert text; only `http:` and `https:` links are active.
+- Chat SSE: use a deterministic fake provider in handler tests. For browser testing, only exercise
+  chat when a local provider/model is available; no real or external credentials.
 
 ## The OpenAPI document (`GET /api/openapi.json`) and contract drift
 `internal/httpapi/openapi.json` is **hand-written** and `go:embed`ed, so it can silently drift from the
@@ -78,25 +106,16 @@ handlers. Cheap, high-value way to test it against a live server (no auth, no fi
   Add an explicit key diff (actual keys − documented `properties`, and `required` − actual keys).
 - Fields with `omitempty` legitimately go missing (e.g. `Artifact` shows 7 of 10 documented keys) — only
   a missing **required** key is a finding.
-- To exercise the `Artifact` schema over HTTP there is no artifact endpoint: add one with the CLI against
-  the *same* `LOOMWORK_HOME` (`loomwork artifact add --project p --name n --type spec --file f`) and read it
-  back inside `GET /api/projects/{ref}`.
+- Exercise artifact/viewer documents through
+  `GET /api/projects/{ref}/items/{family}/{itemRef}` after adding fixtures with the CLI.
 - Go's mux matches methods case-sensitively: sending lowercase `post` from a script yields a confusing 405.
 - `npx --yes @redocly/cli lint internal/httpapi/openapi.json` is available and takes ~1 min the first time;
   3 `operation-4xx-response` advisories are expected/known.
 
-## Known cosmetic trap: literal "null" in the DOM
-`el()` and `render()` in `web/assets/dom.js` filter out `null` children, but native
-`Element.append` stringifies them, so any view that passes a conditional child straight to
-`node.append(...)` prints a visible `null` (this shipped once on the projects landing view before
-`render()` existed). Render through `el`/`render` only, and eyeball pages for stray
-`null`/`undefined` text — the console stays clean, so only a screenshot catches it.
-
 ## Console checks
-Read the console via the console tool after each flow. Fetch 404s are handled in `api.js` and
-surface as toasts, so they do NOT log console errors — an empty console is genuinely clean. To
-avoid a false negative, prove capture works once by running
-`console.error('capture-check')` and re-reading the log.
+Read the console after each flow and assert there are no React, router, fetch, or Swagger viewer
+errors. Also inspect failed network requests: application errors render in the relevant pane and
+may not create a console entry.
 
 ## Devin Secrets Needed
 None. The UI binds to loopback with no auth and needs no external services.

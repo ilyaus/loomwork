@@ -184,6 +184,34 @@ func NewRequirement(id string, spec RequirementSpec) (*Requirement, error) {
 // source back-reference. The receiver is not modified; the caller decides when
 // to mark it superseded.
 func (r *Requirement) NextVersion(spec RequirementSpec) (*Requirement, error) {
+	spec = r.inheritSpec(spec)
+	next, err := NewRequirement(r.ID, spec)
+	if err != nil {
+		return nil, err
+	}
+	next.Version = r.Version + 1
+	return next, nil
+}
+
+// Amend rewrites this requirement version without changing its identity,
+// status, or creation timestamp. The receiver is not modified.
+func (r *Requirement) Amend(spec RequirementSpec) (*Requirement, error) {
+	if r.Status == RequirementStatusSuperseded {
+		return nil, fmt.Errorf("requirement %s v%d is superseded: amend the current version or use a new version instead", r.ID, r.Version)
+	}
+	spec = r.inheritSpec(spec)
+	spec.Status = r.Status
+	amended, err := NewRequirement(r.ID, spec)
+	if err != nil {
+		return nil, err
+	}
+	amended.Version = r.Version
+	amended.Status = r.Status
+	amended.CreatedAt = r.CreatedAt
+	return amended, nil
+}
+
+func (r *Requirement) inheritSpec(spec RequirementSpec) RequirementSpec {
 	if spec.SourceType == "" && spec.SourceRef == "" {
 		spec.SourceType = r.SourceType
 		spec.SourceRef = r.SourceRef
@@ -200,12 +228,7 @@ func (r *Requirement) NextVersion(spec RequirementSpec) (*Requirement, error) {
 	if len(spec.Metadata) == 0 {
 		spec.Metadata = r.Metadata
 	}
-	next, err := NewRequirement(r.ID, spec)
-	if err != nil {
-		return nil, err
-	}
-	next.Version = r.Version + 1
-	return next, nil
+	return spec
 }
 
 // errSupersededNotSettable rejects superseded as an input status: only creating

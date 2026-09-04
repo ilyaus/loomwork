@@ -16,6 +16,10 @@ presets.json
 # agent bridge dependencies (installed with `cd bridge && npm install`)
 /bridge/node_modules/
 /bridge/package-lock.json
+/web/ui/node_modules/
+/web/ui/*.tsbuildinfo
+/web/ui/vite.config.js
+/web/ui/vite.config.d.ts
 
 # tooling noise
 *.test
