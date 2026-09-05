@@ -10,11 +10,13 @@ and the result is stored back as a new versioned artifact with full lineage.
 [`docs/loom-work-vision.md`](docs/loom-work-vision.md) is the authoritative
 product spec and [`docs/ROADMAP.md`](docs/ROADMAP.md) sequences its five phases.
 What exists today: the project directory store, document source links, typed
-versioned **requirements** (phase 1), plus the foundation the later phases build
-on — the provider abstraction, the per-model preset registry, a `cue-note`
-client, and a CLI vertical slice that works end to end against a local model.
-LLM document analysis, agent definitions and override rules, test generation, the
-execution contract, and the browser UI are phases 2–5.
+versioned **requirements** (phase 1), LLM document analysis with requirement
+extraction (phase 2), versioned agent definitions, override rules, and
+agent-driven or imported test suites audited for traceability (phase 3), and a
+browser UI over all of it with a derived coverage rollup per project. Underneath
+sit the provider abstraction, the per-model preset registry, a `cue-note`
+client, and a CLI that works end to end against a local model. The execution
+contract and run-to-run comparison are phases 4 and 5.
 
 ## Features
 
@@ -162,14 +164,37 @@ loomwork serve [--addr 127.0.0.1:8787]
 
 Serves a single-page workbench UI and its JSON API over the same workspace the
 CLI uses. `make build` compiles the React/Vite app in `web/ui` into `web/dist`
-before embedding it in the binary.
+before embedding it in the binary. Editing `web/ui` has no effect on a running
+`loomwork serve` until you rebuild; for hot reload run `npm run dev` in `web/ui`
+against a server on `127.0.0.1:8787`.
 
-The browser opens on the directory-of-projects landing view. A project opens an
-agent-desktop shell with a resizable entity tree, tabbed typed viewers, and an
-SSE-backed provider chat dock. The tree exposes requirements, agent definitions,
-override rules, test suites and cases, reports, and free-form artifacts. Project
-overview and requirement viewers retain source linking, requirement creation,
-versioning, history, and status management.
+The landing view lists projects with their health: active requirements, artifact
+and source counts, and, once a project has a test suite, the share of active
+requirements covered by at least one test case plus the outcome of the newest
+report. A project opens a desktop with three panes:
+
+- **Explorer** (left, resizable): requirements, agent definitions, override
+  rules, test suites with nested cases, reports grouped by folder, and free-form
+  artifacts. A filter box searches every item.
+- **Tabs** (center): the overview dashboard (coverage, open gaps, sources, agents
+  and rules, recent artifacts), the requirements and test-suite list views, and
+  one tab per opened entity. Versioned entities have a version switcher; older
+  versions render read-only. Requirement chips on test cases, rule citations, and
+  agent references open the linked entity, so traceability is one click.
+- **Chat** (right, collapsible): a provider/model picker grouped by provider,
+  the open artifact attached as grounding context, markdown replies, and a Stop
+  button. Chat runs through the same `TextGenerator` adapters as `run`.
+
+Every entity family can be created from the UI: requirements (with source type
+and reference), inline-content artifacts, imported test suites (paste or upload
+the suite JSON; the audit result is shown before opening), agent definitions,
+override rules, and documentation sources. Requirement rows offer an in-place
+edit, a new retained version, history (newest first), and an active/obsolete
+switch. Viewers are typed: agent definitions render their frontmatter and
+markdown, override rules show the condition/action pair beside the rationale,
+reports show pass/fail counts with per-test latency, OpenAPI specs open in a
+read-only Swagger viewer, HTML opens in a fully sandboxed iframe, and logs color
+warnings and errors. The theme follows the OS and can be pinned light or dark.
 
 `--addr` accepts a bare port or a loopback address; non-loopback hosts are
 rejected. Loomwork is local-first and single-user, so the server has no
@@ -186,6 +211,14 @@ server:
 ```
 curl -s http://127.0.0.1:8787/api/openapi.json | jq '.paths | keys'
 ```
+
+Besides projects, sources, and requirements, the API writes artifacts
+(`POST .../artifacts`), imports suites (`POST .../test-suites` with the suite
+document as the body), and creates or versions agent definitions and override
+rules (`POST`/`PATCH .../agent-definitions`, `.../override-rules`, plus a
+`.../status` endpoint for rules). `GET .../items/{family}/{ref}/history` lists
+the retained versions of any versioned entity, and `GET .../testability` derives
+the coverage rollup the landing view shows.
 
 The document is hand-written next to the router and a test rejects any drift
 between the two: every documented operation must be routed, and each path's

@@ -20,7 +20,10 @@
     {"name": "meta", "description": "Server and workspace introspection."},
     {"name": "projects", "description": "Projects and their document sources."},
     {"name": "requirements", "description": "Versioned, immutable requirement snapshots."},
-    {"name": "desktop", "description": "Project tree, typed viewers, model discovery, and streamed chat."}
+    {"name": "artifacts", "description": "Free-form versioned project material: specs, logs, docs, generated content."},
+    {"name": "test-suites", "description": "Versioned test suites, generated or imported, audited for traceability."},
+    {"name": "agents", "description": "Versioned agent definitions and the override rules that govern generation."},
+    {"name": "desktop", "description": "Project tree, typed viewers, version history, testability, model discovery, and streamed chat."}
   ],
   "paths": {
     "/api/openapi.json": {
@@ -414,6 +417,301 @@
           "503": {"$ref": "#/components/responses/ServiceUnavailable"}
         }
       }
+    },
+    "/api/projects/{projectRef}/testability": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["desktop"],
+        "operationId": "getTestability",
+        "summary": "Derive the project's testability rollup.",
+        "description": "Computed on read from the current test suite versions and the reports folder: which active requirements have a linked test case, which have none, and the outcome of the most recent report.",
+        "responses": {
+          "200": {
+            "description": "Coverage and last-run summary.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/TestabilityReport"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/artifacts": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["artifacts"],
+        "operationId": "listArtifacts",
+        "summary": "List the latest revision of every artifact name.",
+        "responses": {
+          "200": {
+            "description": "Latest artifact revisions, ordered by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/Artifact"}
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "post": {
+        "tags": ["artifacts"],
+        "operationId": "addArtifact",
+        "summary": "Add an inline-content artifact revision.",
+        "description": "Posting an existing name writes the next revision with the previous one as its parent, matching `artifact add`. Only inline content is accepted: a browser cannot reference a path on the server's disk.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/ArtifactWrite"}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored artifact revision.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Artifact"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/test-suites": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["test-suites"],
+        "operationId": "listTestSuites",
+        "summary": "List the current version of every test suite, manifest only.",
+        "responses": {
+          "200": {
+            "description": "Suite manifests without their cases; case_ids names them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/TestSuite"}
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "post": {
+        "tags": ["test-suites"],
+        "operationId": "importTestSuite",
+        "summary": "Import a suite document as the next version of its suite id.",
+        "description": "The body is the suite document itself (docs/schemas/test-case.schema.json), so a file that works with `test-suite import --file` posts unchanged. The suite is audited against the active override rules and requirements: unlinked cases or violated rules make it incomplete, and an incomplete suite is stored and flagged rather than rejected.",
+        "parameters": [
+          {
+            "name": "suiteId",
+            "in": "query",
+            "required": false,
+            "description": "Override the suite_id in the document.",
+            "schema": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/TestSuiteImport"}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored suite version and its audit.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ImportResult"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/agent-definitions": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["agents"],
+        "operationId": "listAgentDefinitions",
+        "summary": "List the current version of every agent definition.",
+        "responses": {
+          "200": {"$ref": "#/components/responses/AgentDefinitionList"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "post": {
+        "tags": ["agents"],
+        "operationId": "createAgentDefinition",
+        "summary": "Create an agent definition at version 1.",
+        "description": "target_provider defaults to claude-agent-sdk. tools_allowed is a strict allowlist: a definition that names no tools grants none.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/AgentDefinitionWrite"}
+            }
+          }
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/AgentDefinitionVersion"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/agent-definitions/{agentName}": {
+      "parameters": [
+        {"$ref": "#/components/parameters/ProjectRef"},
+        {"$ref": "#/components/parameters/AgentName"}
+      ],
+      "patch": {
+        "tags": ["agents"],
+        "operationId": "updateAgentDefinition",
+        "summary": "Write the next agent definition version.",
+        "description": "Fields left empty inherit from the current version, so a body-only edit keeps the target and tool allowlist. Earlier version files are never modified.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/AgentDefinitionWrite"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/AgentDefinitionVersion"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/override-rules": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["agents"],
+        "operationId": "listOverrideRules",
+        "summary": "List the current version of every override rule.",
+        "responses": {
+          "200": {"$ref": "#/components/responses/OverrideRuleList"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "post": {
+        "tags": ["agents"],
+        "operationId": "createOverrideRule",
+        "summary": "Create an override rule at version 1.",
+        "description": "A rule is hybrid: a structured condition/action pair the workbench audits deterministically plus the free-text rationale the agent reasons over. The rationale is required.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/OverrideRuleWrite"}
+            }
+          }
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/OverrideRuleVersion"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/override-rules/{ruleId}": {
+      "parameters": [
+        {"$ref": "#/components/parameters/ProjectRef"},
+        {"$ref": "#/components/parameters/RuleID"}
+      ],
+      "patch": {
+        "tags": ["agents"],
+        "operationId": "updateOverrideRule",
+        "summary": "Write the next override rule version.",
+        "description": "The new version is active and the previous one becomes superseded. Fields left empty inherit from the current version.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/OverrideRuleWrite"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/OverrideRuleVersion"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/override-rules/{ruleId}/status": {
+      "parameters": [
+        {"$ref": "#/components/parameters/ProjectRef"},
+        {"$ref": "#/components/parameters/RuleID"}
+      ],
+      "post": {
+        "tags": ["agents"],
+        "operationId": "setOverrideRuleStatus",
+        "summary": "Set one rule version's status to active or obsolete.",
+        "description": "superseded is set only by writing a newer version and is rejected here.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/OverrideRuleStatusRequest"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/OverrideRuleVersion"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/items/{family}/{itemRef}/history": {
+      "parameters": [
+        {"$ref": "#/components/parameters/ProjectRef"},
+        {"$ref": "#/components/parameters/ItemFamily"},
+        {"$ref": "#/components/parameters/ItemRef"}
+      ],
+      "get": {
+        "tags": ["desktop"],
+        "operationId": "getItemHistory",
+        "summary": "List the retained versions of a versioned item, newest first.",
+        "description": "Works for requirements, agent-definitions, override-rules, and test-suites; other families are rejected with 400. Read a listed version's full document from the item endpoint with ?version=N.",
+        "responses": {
+          "200": {
+            "description": "Version summaries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/ItemVersion"}
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
     }
   },
   "components": {
@@ -455,6 +753,20 @@
         "required": false,
         "description": "Retained version to read. Omitted means the current version.",
         "schema": {"type": "integer", "minimum": 1}
+      },
+      "AgentName": {
+        "name": "agentName",
+        "in": "path",
+        "required": true,
+        "description": "Agent definition name, stable across versions.",
+        "schema": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
+      },
+      "RuleID": {
+        "name": "ruleId",
+        "in": "path",
+        "required": true,
+        "description": "Override rule id, stable across versions.",
+        "schema": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
       }
     },
     "responses": {
@@ -509,6 +821,44 @@
         "content": {
           "application/json": {
             "schema": {"$ref": "#/components/schemas/Requirement"}
+          }
+        }
+      },
+      "AgentDefinitionList": {
+        "description": "Agent definition version snapshots.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {"$ref": "#/components/schemas/AgentDefinition"}
+            }
+          }
+        }
+      },
+      "AgentDefinitionVersion": {
+        "description": "One agent definition version snapshot.",
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/AgentDefinition"}
+          }
+        }
+      },
+      "OverrideRuleList": {
+        "description": "Override rule version snapshots.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {"$ref": "#/components/schemas/OverrideRule"}
+            }
+          }
+        }
+      },
+      "OverrideRuleVersion": {
+        "description": "One override rule version snapshot.",
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/OverrideRule"}
           }
         }
       }
@@ -706,13 +1056,77 @@
       },
       "Testability": {
         "type": "object",
-        "description": "Per-project health rollup. Its fields are derived from execution reports and test-case coverage, which arrive in later phases, so they are null until then and `available` says so rather than a client having to guess whether a zero means \"none\" or \"unknown\".",
+        "description": "Per-project health rollup derived on read from the current test suite versions and the reports folder. `available` is false when the project has no suites and no reports, so a client can tell \"nothing tested yet\" from \"0% covered\"; coverage and gaps are null until at least one suite and one active requirement exist.",
         "required": ["available", "lastTestedAt", "coveragePercent", "openGaps"],
         "properties": {
           "available": {"type": "boolean"},
-          "lastTestedAt": {"type": ["string", "null"], "format": "date-time"},
-          "coveragePercent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
-          "openGaps": {"type": ["integer", "null"], "minimum": 0}
+          "lastTestedAt": {"type": ["string", "null"], "format": "date-time", "description": "Run timestamp of the newest report when it records one, otherwise the file's modification time."},
+          "coveragePercent": {"type": ["number", "null"], "minimum": 0, "maximum": 100, "description": "Share of active requirements linked by at least one test case."},
+          "openGaps": {"type": ["integer", "null"], "minimum": 0, "description": "Active requirements with no linked test case."}
+        }
+      },
+      "TestabilityReport": {
+        "description": "The rollup plus the requirement ids behind it and the newest report's outcome.",
+        "allOf": [
+          {"$ref": "#/components/schemas/Testability"},
+          {
+            "type": "object",
+            "required": ["activeRequirements", "coveredRequirements", "uncoveredRequirements", "suites", "incompleteSuites", "cases", "unlinkedCases", "reports", "lastRun"],
+            "properties": {
+              "activeRequirements": {"type": "integer", "minimum": 0},
+              "coveredRequirements": {"type": "array", "items": {"type": "string"}},
+              "uncoveredRequirements": {"type": "array", "items": {"type": "string"}},
+              "suites": {"type": "integer", "minimum": 0},
+              "incompleteSuites": {"type": "integer", "minimum": 0},
+              "cases": {"type": "integer", "minimum": 0},
+              "unlinkedCases": {"type": "integer", "minimum": 0},
+              "reports": {"type": "integer", "minimum": 0},
+              "lastRun": {
+                "oneOf": [{"$ref": "#/components/schemas/RunSummary"}, {"type": "null"}]
+              }
+            }
+          }
+        ]
+      },
+      "RunSummary": {
+        "type": "object",
+        "description": "Aggregate counts read from the newest JSON report. Counts nested under `summary` (api-test-runner) or at the top level are accepted; otherwise per-row `results`/`tests` statuses are tallied.",
+        "required": ["report", "total", "passed", "failed", "skipped"],
+        "properties": {
+          "report": {"type": "string", "description": "Report path relative to the project's reports folder."},
+          "outcome": {"type": "string"},
+          "total": {"type": "integer", "minimum": 0},
+          "passed": {"type": "integer", "minimum": 0},
+          "failed": {"type": "integer", "minimum": 0},
+          "skipped": {"type": "integer", "minimum": 0}
+        }
+      },
+      "ItemVersion": {
+        "type": "object",
+        "description": "One retained version of a versioned item.",
+        "required": ["version", "createdAt"],
+        "properties": {
+          "version": {"type": "integer", "minimum": 1},
+          "status": {"type": "string", "description": "Family-specific: requirement or rule status, or ready/incomplete for a suite."},
+          "summary": {"type": "string", "description": "Short human-readable label for the version."},
+          "createdAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ArtifactWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "content"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "type": {
+            "type": "string",
+            "description": "Defaults to doc.",
+            "enum": ["spec", "log", "test-result", "diagram", "doc", "generated"]
+          },
+          "content": {"type": "string", "minLength": 1},
+          "mediaType": {"type": "string", "description": "Overrides the media type inferred from the name's extension."},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "pinned": {"type": "boolean"}
         }
       },
       "DocumentSource": {
@@ -822,6 +1236,226 @@
         "required": ["status"],
         "properties": {
           "status": {"$ref": "#/components/schemas/RequirementStatus"},
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Version to change. 0 or omitted changes the current version."
+          }
+        }
+      },
+      "HTTPMethod": {
+        "type": "string",
+        "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+      },
+      "TestScenario": {
+        "type": "string",
+        "description": "Closed set so an override rule's condition and a generated case match mechanically.",
+        "enum": ["happy-path", "missing-item", "invalid-input", "missing-authentication", "unauthorized", "conflict", "rate-limit", "server-error", "other"]
+      },
+      "TestRequest": {
+        "type": "object",
+        "required": ["method", "path"],
+        "properties": {
+          "method": {"$ref": "#/components/schemas/HTTPMethod"},
+          "path": {"type": "string", "pattern": "^/"},
+          "query": {"type": "object", "additionalProperties": {"type": "string"}},
+          "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+          "body": {"type": "string"},
+          "body_media_type": {"type": "string"}
+        }
+      },
+      "TestExpectation": {
+        "type": "object",
+        "description": "Structural only: value-level comparison is out of scope.",
+        "required": ["status"],
+        "properties": {
+          "status": {"type": "integer", "minimum": 100, "maximum": 599},
+          "empty_collection": {"type": "boolean"},
+          "body_fields": {"type": "array", "items": {"type": "string"}},
+          "max_latency_ms": {"type": "integer", "minimum": 1},
+          "notes": {"type": "string"}
+        }
+      },
+      "TestCase": {
+        "type": "object",
+        "description": "One REST API test case. requirement_ids and overrides_applied are always present so an unlinked case is visible in the document. Stored cases always carry an id; an import may omit it. Full constraints: docs/schemas/test-case.schema.json.",
+        "required": ["name", "requirement_ids", "overrides_applied", "scenario", "request", "expected"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^tc-[0-9]{3,}$", "description": "Assigned in tc-NNN order when omitted on import."},
+          "name": {"type": "string", "minLength": 1},
+          "requirement_ids": {"type": "array", "items": {"type": "string", "pattern": "^req-[0-9]{3,}$"}},
+          "overrides_applied": {"type": "array", "items": {"type": "string"}, "description": "Override rule citations in rule-id-vN form."},
+          "scenario": {"$ref": "#/components/schemas/TestScenario"},
+          "request": {"$ref": "#/components/schemas/TestRequest"},
+          "expected": {"$ref": "#/components/schemas/TestExpectation"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      },
+      "TestSuiteImport": {
+        "type": "object",
+        "description": "A suite document authored outside Loomwork (docs/schemas/test-case.schema.json). Unknown fields are rejected. The store assigns version, origin, and created_at; case ids left empty are assigned in tc-NNN order.",
+        "required": ["suite_id", "cases"],
+        "properties": {
+          "suite_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "origin": {"type": "string", "enum": ["generated", "imported"]},
+          "cases": {"type": "array", "items": {"$ref": "#/components/schemas/TestCase"}},
+          "requirement_versions": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1}},
+          "override_rules": {"type": "array", "items": {"type": "string"}},
+          "agent_definition": {"type": "string"},
+          "spec_ref": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      },
+      "TestSuite": {
+        "type": "object",
+        "description": "One immutable suite version as stored. List responses omit cases and name them in case_ids.",
+        "required": ["suite_id", "version", "origin", "incomplete", "created_at"],
+        "properties": {
+          "suite_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "version": {"type": "integer", "minimum": 1},
+          "origin": {"type": "string", "enum": ["generated", "imported"]},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "cases": {"type": "array", "items": {"$ref": "#/components/schemas/TestCase"}},
+          "case_ids": {"type": "array", "items": {"type": "string"}},
+          "incomplete": {"type": "boolean", "description": "True when a case is unlinked, a rule is violated, or a link points at an unknown requirement."},
+          "incomplete_reasons": {"type": "array", "items": {"type": "string"}},
+          "agent_definition": {"type": "string", "description": "agent-name-vN citation for generated suites."},
+          "requirement_versions": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1}},
+          "override_rules": {"type": "array", "items": {"type": "string"}},
+          "spec_ref": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "OverrideFinding": {
+        "type": "object",
+        "required": ["kind", "case_id", "detail"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["annotated", "violated", "forbidden", "unknown-rule"]},
+          "case_id": {"type": "string"},
+          "rule_ref": {"type": "string"},
+          "detail": {"type": "string"}
+        }
+      },
+      "TestSuiteAudit": {
+        "type": "object",
+        "description": "What auditing the suite against the override rules found. Annotations changed the stored suite; the other kinds made it incomplete.",
+        "properties": {
+          "unlinked_cases": {"type": "array", "items": {"type": "string"}},
+          "findings": {"type": "array", "items": {"$ref": "#/components/schemas/OverrideFinding"}}
+        }
+      },
+      "ImportResult": {
+        "type": "object",
+        "required": ["projectId", "suite", "audit"],
+        "properties": {
+          "projectId": {"type": "string"},
+          "suite": {"$ref": "#/components/schemas/TestSuite"},
+          "audit": {"$ref": "#/components/schemas/TestSuiteAudit"}
+        }
+      },
+      "AgentTarget": {
+        "type": "string",
+        "description": "Agent adapter backend. copilot-sdk is declared but has no adapter yet.",
+        "enum": ["claude-agent-sdk", "copilot-sdk"]
+      },
+      "AgentDefinitionWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The writable half of an agent definition. agent_name is required on create and ignored on update; empty fields inherit on update.",
+        "properties": {
+          "agent_name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "target_provider": {"$ref": "#/components/schemas/AgentTarget"},
+          "model": {"type": "string"},
+          "tools_allowed": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_]*$"}},
+          "body": {"type": "string", "description": "Markdown instructions."},
+          "description": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      },
+      "AgentDefinition": {
+        "type": "object",
+        "description": "One immutable version, stored as agent-definitions/<agent_name>.v<version>.md. Full constraints: docs/schemas/agent-definition.schema.json.",
+        "required": ["agent_name", "version", "target_provider", "body", "created_at"],
+        "properties": {
+          "agent_name": {"type": "string"},
+          "version": {"type": "integer", "minimum": 1},
+          "target_provider": {"$ref": "#/components/schemas/AgentTarget"},
+          "model": {"type": "string"},
+          "tools_allowed": {"type": "array", "items": {"type": "string"}},
+          "body": {"type": "string"},
+          "description": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "OverrideCondition": {
+        "type": "object",
+        "description": "Selects the cases a rule governs; every populated field must match and an empty condition matches every case.",
+        "properties": {
+          "methods": {"type": "array", "items": {"$ref": "#/components/schemas/HTTPMethod"}},
+          "path_pattern": {"type": "string", "description": "Glob: * stays within one segment, ** crosses segments."},
+          "scenario": {"$ref": "#/components/schemas/TestScenario"},
+          "spec_status": {"type": "integer", "minimum": 100, "maximum": 599, "description": "The literal spec status the rule corrects; documentary, not matched."}
+        }
+      },
+      "OverrideAction": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["expect-status", "expect-empty-collection", "skip-test"]},
+          "expect_status": {"type": "integer", "minimum": 100, "maximum": 599, "description": "Required for expect-status, defaults to 200 for expect-empty-collection, forbidden for skip-test."}
+        }
+      },
+      "OverrideRuleStatus": {
+        "type": "string",
+        "enum": ["active", "obsolete", "superseded"]
+      },
+      "OverrideRuleWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The writable half of an override rule. id is required on create and ignored on update; empty fields inherit on update. A rationale is required because the agent reasons over it.",
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "title": {"type": "string"},
+          "condition": {"$ref": "#/components/schemas/OverrideCondition"},
+          "action": {"$ref": "#/components/schemas/OverrideAction"},
+          "rationale": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      },
+      "OverrideRule": {
+        "type": "object",
+        "description": "One immutable rule version, stored as agent-definitions/override-rules/<id>.v<version>.json.",
+        "required": ["id", "version", "title", "condition", "action", "rationale", "status", "created_at"],
+        "properties": {
+          "id": {"type": "string"},
+          "version": {"type": "integer", "minimum": 1},
+          "title": {"type": "string"},
+          "condition": {"$ref": "#/components/schemas/OverrideCondition"},
+          "action": {"$ref": "#/components/schemas/OverrideAction"},
+          "rationale": {"type": "string"},
+          "status": {"$ref": "#/components/schemas/OverrideRuleStatus"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "metadata": {"type": "object", "additionalProperties": {"type": "string"}},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "OverrideRuleStatusRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": {"type": "string", "enum": ["active", "obsolete"]},
           "version": {
             "type": "integer",
             "minimum": 0,

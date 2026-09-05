@@ -50,19 +50,51 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
 - `/api/workspace` may return an empty body; use `/api/projects` to confirm the server is live.
 
 ## UI map (BrowserRouter React SPA)
-- `/` → project cards plus the new-project form.
-- `/projects/{id}` → the Agent Desktop: resizable entity tree, tabbed viewer area, and agent chat.
-- The project overview tab contains document source linking and requirement creation.
-- Requirements and Test suites are main-area list views opened from the Explorer. Requirement rows
-  stay compact and do not expand on row-body click: each has a top-right status badge, Edit (PUT
-  amend-in-place), New version (PATCH supersede-and-bump), an Active/Obsolete checkbox switch
-  (on=active), and a History reveal with read-only retained-version text; only the edited or
-  history row shows its inline panel. Test suite rows still expand inline to the typed detail.
-- The Test suites list exposes every nested test case; reports and artifacts select viewers by
-  artifact/media type.
-- The splitter width persists in `localStorage` under `loomwork.projectTreeWidth`.
+- `/` → project cards (coverage badge, open gaps, last tested) and a "New project" dialog.
+- `/projects/{id}` → the desktop: Explorer (left, resizable, with a filter box), tab strip plus
+  viewer (center), collapsible chat pane (right, resizable). Widths persist in `localStorage`
+  (`loomwork.projectTreeWidth`, `loomwork.chatWidth`, `loomwork.chatOpen`); open tabs persist per
+  project in `sessionStorage` (`loomwork.tabs.<id>`); the theme in `loomwork.theme`
+  (`system|light|dark`, applied as `<html data-theme>`).
+- The Overview tab is a dashboard: stat cards (requirements, coverage, suites, last run), an
+  "Open gaps" panel listing uncovered active requirements (click opens the requirement tab),
+  sources table with "Link source", agents and rules, recent artifacts, and quick-action buttons
+  that open the create dialogs (`.quick-actions .btn`).
+- Every create/import form is a `<dialog>` (`.dialog[open]`): requirement (text, source type +
+  ref, tags, origin), artifact (paste or choose a file; inline content only), suite import (paste
+  or upload JSON; shows the audit before "Open the suite"), agent definition, override rule
+  (methods, path glob, scenario, spec status, action, rationale), source (replace-by-name is
+  announced on the button). Viewer "New version" buttons open the same dialog prefilled.
+- Explorer group labels for Requirements and Test suites open list views (`.tree-group-label`);
+  the chevron (`.tree-toggle`) expands the items. Other families expand in place. Reports are
+  grouped by folder (`.tree-folder`). Items are `.tree-row`.
+- The Requirements list (`.req-row`) has a search box, status segmented control, tag select,
+  and per row: `.req-id` (opens a tab), Edit (PUT amend), New version (PATCH), History (newest
+  first, `.req-history`), and an Active/Obsolete switch (`.switch input`). Only the edited or
+  history row shows its inline panel.
+- The Test suites list (`.suite-card`) expands to the typed `SuiteDetail`; each `.case-summary`
+  row expands to the case card once (no duplicate case list). Requirement and rule chips are
+  `.chip-link` buttons that open the linked entity.
+- Item tabs (`ItemViewer`) show a version switcher (`.version-switcher select`) for requirements,
+  agent definitions, override rules, and suites; choosing an older version shows a read-only
+  notice and hides edit actions.
+- Viewers by type: agent definition (parsed frontmatter + markdown, "Raw file" toggle), override
+  rule (condition/action boxes + rationale), test case, suite, report (counts, pass bar, per-test
+  table, "Raw JSON"), markdown (rendered/raw), HTML (`sandbox=""` iframe, "Source" toggle),
+  OpenAPI (Swagger, `docExpansion="list"`, inverted in dark theme), log (level coloring,
+  "Problems only"), text (line numbers, wrap, copy).
 - Server-side SPA fallback (`internal/httpapi/server.go` `uiHandler`) rewrites unknown paths to
   `index.html`, so direct navigation to `/projects/{id}` must render that project.
+
+## Scripted browser checks
+`puppeteer-core` against the system Chrome works well and needs no download:
+`mkdir /tmp/pw && cd /tmp/pw && npm init -y && npm i puppeteer-core`, then
+`puppeteer.launch({executablePath: "/usr/bin/google-chrome", headless: true, args: ["--no-sandbox"]})`.
+Fill dialog fields by their `.field-label` text; assert through the API afterwards
+(`/api/projects/{id}/requirements`, `/testability`, `/items/.../history`). Two console lines are
+expected and harmless when an HTML artifact is open: the sandboxed iframe blocking the artifact's
+`<script>`, and (only if you inject `evaluateOnNewDocument`) a `localStorage` SecurityError from
+that same frame. Anything else in the console is a finding.
 
 ## Assertions that actually catch regressions
 - Source "replace by name": re-submit the same source *name* with a different type/url and assert
@@ -72,10 +104,10 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
   version" grows history by one, while "Edit" (PUT) leaves history length, version, status, and
   `created_at` untouched. The Active/Obsolete switch must update the current version through the
   status endpoint without inventing history.
-- Narrow viewport: resize with `wmctrl -r :ACTIVE: -e 0,0,0,860,740` to cross the 900px breakpoint
-  (restore with `wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz`). Requirement rows must
-  stack there — the Explorer and Conversation panels keep fixed widths, so the list gets ~200px and
-  a side-by-side row grid overlaps the version chip.
+- Narrow viewport: resize with `wmctrl -r :ACTIVE: -e 0,0,0,860,740` (or `page.setViewport`) to cross
+  the 900px breakpoint. Requirement rows must stack (actions wrap under the text) and the chat pane must
+  still be fully visible: the side panes are capped at `28vw`/`34vw` and the work area at 280px, so
+  all three fit down to about 730px; below 720px the chat pane hides.
 - Version + source type interaction: create a requirement with a source type and `source_ref`, then
   save a new version editing only the text. The omitted source fields must inherit in the store.
 - `PATCH /requirements/{id}` intentionally rejects a `status` field; status changes go through the
@@ -85,7 +117,16 @@ Seed with the CLI (`--home <workspace>`), then confirm the shape with
 - HTML safety: open a `text/html` artifact and assert it is inside a sandboxed iframe. A
   `javascript:` source link must render as inert text; only `http:` and `https:` links are active.
 - Chat SSE: use a deterministic fake provider in handler tests. For browser testing, only exercise
-  chat when a local provider/model is available; no real or external credentials.
+  chat when a local provider/model is available (Ollama and LM Studio are often running on this box;
+  `ollama/llama3.1:latest` answers in a few seconds); no real or external credentials. Assert the
+  reply used the attached artifact, that Stop brings the Send button back and leaves "(stopped)" in
+  the turn, and that the transcript survives a reload (`sessionStorage`).
+- Write flows: every dialog should end with the new entity's tab focused (`.tab.on .tab-name`). Suite
+  import must show the audit (`flagged incomplete`, rule `forbids testing` for a skip-test violation)
+  before the suite opens, and `/testability` must change accordingly.
+- Testability: `lastTestedAt`/`lastRun` follow the newest embedded `run_timestamp` across JSON reports,
+  falling back to file mtime; a non-JSON report contributes only its mtime. Coverage counts only
+  active requirements linked from any current suite version.
 
 ## The OpenAPI document (`GET /api/openapi.json`) and contract drift
 `internal/httpapi/openapi.json` is **hand-written** and `go:embed`ed, so it can silently drift from the
@@ -110,7 +151,10 @@ handlers. Cheap, high-value way to test it against a live server (no auth, no fi
   `GET /api/projects/{ref}/items/{family}/{itemRef}` after adding fixtures with the CLI.
 - Go's mux matches methods case-sensitively: sending lowercase `post` from a script yields a confusing 405.
 - `npx --yes @redocly/cli lint internal/httpapi/openapi.json` is available and takes ~1 min the first time;
-  3 `operation-4xx-response` advisories are expected/known.
+  4 `operation-4xx-response` advisories on the meta endpoints are expected/known.
+- The route-coverage test only checks documented paths are routed, not that every routed path is
+  documented. When adding a route, add it to `openapi.json` and extend the `{placeholder}` replacer in
+  `openapi_test.go` if the path introduces a new template variable.
 
 ## Console checks
 Read the console after each flow and assert there are no React, router, fetch, or Swagger viewer

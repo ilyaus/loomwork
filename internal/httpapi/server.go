@@ -18,10 +18,10 @@ import (
 	"github.com/ilyaus/loomwork/internal/store"
 )
 
-// maxRequestBytes bounds a request body. The UI posts requirement text, not
-// documents, so a small ceiling is enough to keep a malformed client from
-// exhausting memory.
-const maxRequestBytes = 1 << 20
+// maxRequestBytes bounds a request body. The UI posts artifact content and suite
+// documents inline, so the ceiling allows a sizeable OpenAPI spec while still
+// keeping a malformed client from exhausting memory.
+const maxRequestBytes = 8 << 20
 
 // Options configures a Server.
 type Options struct {
@@ -108,27 +108,67 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet: s.projectHandler(s.listProjectItems),
 		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "testability":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet: s.projectHandler(s.getTestability),
+		})
 	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "chat":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodPost: s.projectHandler(s.chat),
+		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "artifacts":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet:  s.projectHandler(s.listArtifacts),
+			http.MethodPost: s.projectHandler(s.addArtifact),
+		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "test-suites":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet:  s.projectHandler(s.listTestSuites),
+			http.MethodPost: s.projectHandler(s.importTestSuite),
+		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "agent-definitions":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet:  s.projectHandler(s.listAgentDefinitions),
+			http.MethodPost: s.projectHandler(s.createAgentDefinition),
+		})
+	case len(segments) == 4 && segments[0] == "projects" && segments[2] == "agent-definitions":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodPatch: s.entityHandler(s.updateAgentDefinition),
+		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "override-rules":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet:  s.projectHandler(s.listOverrideRules),
+			http.MethodPost: s.projectHandler(s.createOverrideRule),
+		})
+	case len(segments) == 4 && segments[0] == "projects" && segments[2] == "override-rules":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodPatch: s.entityHandler(s.updateOverrideRule),
+		})
+	case len(segments) == 5 && segments[0] == "projects" && segments[2] == "override-rules" && segments[4] == "status":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodPost: s.entityHandler(s.setOverrideRuleStatus),
 		})
 	case len(segments) == 5 && segments[0] == "projects" && segments[2] == "items":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet: s.itemHandler(s.getProjectItem),
 		})
+	case len(segments) == 6 && segments[0] == "projects" && segments[2] == "items" && segments[5] == "history":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet: s.itemHandler(s.itemHistory),
+		})
 	case len(segments) == 4 && segments[0] == "projects" && segments[2] == "requirements":
 		s.route(w, r, map[string]http.HandlerFunc{
-			http.MethodGet:   s.requirementHandler(s.getRequirement),
-			http.MethodPut:   s.requirementHandler(s.amendRequirement),
-			http.MethodPatch: s.requirementHandler(s.updateRequirement),
+			http.MethodGet:   s.entityHandler(s.getRequirement),
+			http.MethodPut:   s.entityHandler(s.amendRequirement),
+			http.MethodPatch: s.entityHandler(s.updateRequirement),
 		})
 	case len(segments) == 5 && segments[0] == "projects" && segments[2] == "requirements" && segments[4] == "history":
 		s.route(w, r, map[string]http.HandlerFunc{
-			http.MethodGet: s.requirementHandler(s.requirementHistory),
+			http.MethodGet: s.entityHandler(s.requirementHistory),
 		})
 	case len(segments) == 5 && segments[0] == "projects" && segments[2] == "requirements" && segments[4] == "status":
 		s.route(w, r, map[string]http.HandlerFunc{
-			http.MethodPost: s.requirementHandler(s.setRequirementStatus),
+			http.MethodPost: s.entityHandler(s.setRequirementStatus),
 		})
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("no endpoint for %s", r.URL.Path))
@@ -176,8 +216,9 @@ func (s *Server) projectHandler(handler func(http.ResponseWriter, *http.Request,
 	}
 }
 
-// requirementHandler passes both the project reference and the requirement id.
-func (s *Server) requirementHandler(handler func(http.ResponseWriter, *http.Request, string, string)) http.HandlerFunc {
+// entityHandler passes the project reference and the entity id in the fourth
+// segment: a requirement id, agent name, or override rule id.
+func (s *Server) entityHandler(handler func(http.ResponseWriter, *http.Request, string, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		segments, err := pathSegments(strings.TrimPrefix(r.URL.EscapedPath(), "/api/"))
 		if err != nil {
