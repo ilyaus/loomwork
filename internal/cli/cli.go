@@ -23,6 +23,7 @@ Usage:
 Commands:
   project create   --name NAME [--description TEXT] [--tags a,b]
                    [--source "name=NAME,type=github,url=URL[,local=PATH][,s3=URI]" ...]
+  project import   --path PATH [--format spec-kit] [--name NAME] [--features a,b] [--preview]
   project list
   project show     --project REF
   project source   --project REF --source "name=NAME,type=ado,url=URL" ...
@@ -106,6 +107,7 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	case "project":
 		return runGroup(rest, stdout, stderr, map[string]commandFunc{
 			"create": projectCreate,
+			"import": projectImport,
 			"list":   projectList,
 			"show":   projectShow,
 			"source": projectSource,

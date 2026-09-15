@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"mime"
@@ -110,6 +111,70 @@ func (d *DirStore) LoadReport(projectRef, name string) (ReportFile, []byte, erro
 		Size:      info.Size(),
 		UpdatedAt: info.ModTime().UTC(),
 	}, raw, nil
+}
+
+func (d *DirStore) AddReport(projectRef, name string, content []byte) (ReportFile, error) {
+	name = strings.TrimSpace(name)
+	if !fs.ValidPath(name) || name == "." || strings.Contains(name, "\\") {
+		return ReportFile{}, fmt.Errorf("report name %q must be a relative file path inside reports", name)
+	}
+	if len(content) == 0 || len(content) > 6<<20 {
+		return ReportFile{}, fmt.Errorf("report content must contain between 1 byte and 6 MB")
+	}
+	if strings.EqualFold(filepath.Ext(name), ".json") && !json.Valid(content) {
+		return ReportFile{}, fmt.Errorf("report %q must contain valid JSON", name)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	release, err := lockDir(d.dir)
+	if err != nil {
+		return ReportFile{}, err
+	}
+	defer release()
+	project, err := d.resolveLocked(projectRef)
+	if err != nil {
+		return ReportFile{}, err
+	}
+	projectRoot, err := os.OpenRoot(d.ProjectDir(project.ID))
+	if err != nil {
+		return ReportFile{}, err
+	}
+	defer projectRoot.Close()
+	if err := projectRoot.Mkdir(ReportsDirName, 0o755); err != nil && !os.IsExist(err) {
+		return ReportFile{}, err
+	}
+	info, err := projectRoot.Lstat(ReportsDirName)
+	if err != nil || !info.IsDir() {
+		return ReportFile{}, fmt.Errorf("reports must be a directory, not a symbolic link")
+	}
+	root, err := projectRoot.OpenRoot(ReportsDirName)
+	if err != nil {
+		return ReportFile{}, err
+	}
+	defer root.Close()
+	parts := strings.Split(name, "/")
+	for i := 1; i < len(parts); i++ {
+		if err := root.Mkdir(strings.Join(parts[:i], "/"), 0o755); err != nil && !os.IsExist(err) {
+			return ReportFile{}, fmt.Errorf("create report directory: %w", err)
+		}
+	}
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return ReportFile{}, fmt.Errorf("report %q already exists; use a different name to retain both runs", name)
+		}
+		return ReportFile{}, fmt.Errorf("create report %q: %w", name, err)
+	}
+	if _, err := file.Write(content); err != nil {
+		file.Close()
+		root.Remove(name)
+		return ReportFile{}, fmt.Errorf("write report %q: %w", name, err)
+	}
+	if err := file.Close(); err != nil {
+		root.Remove(name)
+		return ReportFile{}, err
+	}
+	return ReportFile{Name: name, MediaType: reportMediaType(name), Size: int64(len(content)), UpdatedAt: time.Now().UTC()}, nil
 }
 
 func reportMediaType(name string) string {

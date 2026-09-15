@@ -14,9 +14,9 @@ browser UI, and any agent or executor integration. They live in
 |---|---|---|---|
 | 1 | Project directory management, document links, requirement CRUD + versioning | [`requirement.schema.json`](schemas/requirement.schema.json) | **done (CLI + browser UI)** |
 | 2 | LLM document analysis: gap/question lists, requirement extraction | [`document-analysis.schema.json`](schemas/document-analysis.schema.json) | **done (CLI)** |
-| 3 | Agent definitions, override rules, one agent SDK integration, test generation | `agent-definition.schema.json`, `test-case.schema.json` | planned |
-| 4 | Execution contract (local + remote executor), JSON report ingestion, HTML rendering | `execution-report.schema.json`, `executor-config.schema.json` | planned |
-| 5 | Run comparison (pass/fail, latency, structural body delta) and testability dashboard | — (derived views) | planned |
+| 3 | Agent definitions, override rules, one agent SDK integration, test generation | [`agent-definition.schema.json`](schemas/agent-definition.schema.json), [`test-case.schema.json`](schemas/test-case.schema.json) | **done (CLI; browser UI manages definitions, rules, and suite import)** |
+| 4 | Execution contract (local + remote executor), JSON report ingestion, HTML rendering | `execution-report.schema.json`, `executor-config.schema.json` | planned; the browser UI already renders JSON reports found under `reports/` |
+| 5 | Run comparison (pass/fail, latency, structural body delta) and testability dashboard | — (derived views) | testability rollup done (`GET /api/projects/{ref}/testability`, landing cards, overview); run comparison planned |
 
 The **browser UI** is the intended primary surface and is built incrementally on
 top of these phases. The earlier `serve`/`initial_ui` HTTP+UI attempt was

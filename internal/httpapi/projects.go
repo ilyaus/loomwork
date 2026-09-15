@@ -7,9 +7,10 @@ import (
 	"github.com/ilyaus/loomwork/internal/model"
 )
 
-// ProjectSummary is one row of the directory-of-projects landing view. It is
-// built from the project document alone — including the counts DirStore caches in
-// project.json — so listing many projects never scans their subfolders.
+// ProjectSummary is one row of the directory-of-projects landing view. Counts
+// come from the project document (DirStore caches them in project.json); the
+// testability rollup reads the project's suites and reports, which is cheap on a
+// local disk and keeps the landing view honest about coverage.
 type ProjectSummary struct {
 	ID                 string      `json:"id"`
 	Name               string      `json:"name"`
@@ -22,17 +23,6 @@ type ProjectSummary struct {
 	CreatedAt          time.Time   `json:"createdAt"`
 	UpdatedAt          time.Time   `json:"updatedAt"`
 	Testability        Testability `json:"testability"`
-}
-
-// Testability is the per-project health rollup the landing view shows. Its
-// fields are derived from execution reports and test-case coverage, which arrive
-// in phases 4 and 5, so they are null until then and `available` says so rather
-// than the UI having to guess whether a zero means "none" or "unknown".
-type Testability struct {
-	Available       bool       `json:"available"`
-	LastTestedAt    *time.Time `json:"lastTestedAt"`
-	CoveragePercent *float64   `json:"coveragePercent"`
-	OpenGaps        *int       `json:"openGaps"`
 }
 
 func summarize(project *model.Project) ProjectSummary {
@@ -61,7 +51,13 @@ func (s *Server) listProjects(w http.ResponseWriter, _ *http.Request) {
 	}
 	summaries := make([]ProjectSummary, 0, len(projects))
 	for _, project := range projects {
-		summaries = append(summaries, summarize(project))
+		summary := summarize(project)
+		// A project whose suites or reports cannot be read still lists; its
+		// rollup just stays unavailable.
+		if report, err := s.testability(project.ID); err == nil {
+			summary.Testability = report.Testability
+		}
+		summaries = append(summaries, summary)
 	}
 	writeJSON(w, http.StatusOK, summaries)
 }

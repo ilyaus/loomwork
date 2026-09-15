@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ilyaus/loomwork/internal/model"
+	"github.com/ilyaus/loomwork/internal/projectimport"
 )
 
 // sourceFlagUsage documents the key=value form of --source.
@@ -66,6 +67,35 @@ func projectCreate(e *env, args []string) error {
 		return err
 	}
 	return e.emit(project, fmt.Sprintf("created project %s (%s) with %d document sources", project.Name, project.ID, len(project.Sources)))
+}
+
+func projectImport(e *env, args []string) error {
+	var request projectimport.Request
+	var features string
+	var preview bool
+	if err := e.parse("project import", args, func(flags *flag.FlagSet) {
+		flags.StringVar(&request.Path, "path", "", "absolute source project directory (required)")
+		flags.StringVar(&request.Format, "format", "spec-kit", "source project format")
+		flags.StringVar(&request.Name, "name", "", "local project name (defaults to source directory name)")
+		flags.StringVar(&features, "features", "", "comma-separated feature directories (default all)")
+		flags.BoolVar(&preview, "preview", false, "inspect the import without writing a project")
+	}); err != nil {
+		return err
+	}
+	request.Features = splitList(features)
+	service := projectimport.New(e.store)
+	if preview {
+		result, err := service.Preview(request)
+		if err != nil {
+			return err
+		}
+		return e.emit(result, fmt.Sprintf("%s: %d features, %d requirements, %d artifacts (%d test documents)\n%s", result.Name, len(result.Features), result.Requirements, result.Artifacts, result.TestDocuments, strings.Join(result.Warnings, "\n")))
+	}
+	result, err := service.Import(request)
+	if err != nil {
+		return err
+	}
+	return e.emit(result, fmt.Sprintf("imported %s (%s): %d read-only requirements, %d artifacts; source unchanged", result.Project.Name, result.Project.ID, result.Preview.Requirements, result.Preview.Artifacts))
 }
 
 func projectSource(e *env, args []string) error {

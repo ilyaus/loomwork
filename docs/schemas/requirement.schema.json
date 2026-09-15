@@ -10,8 +10,9 @@
     "id": {
       "type": "string",
       "description": "Requirement identity, stable across versions.",
-      "pattern": "^req-[0-9]{3,}$"
+      "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$"
     },
+    "display_id": {"type": "string", "description": "Spec-based reference for legacy imports whose stored id remains an alias."},
     "version": {
       "type": "integer",
       "description": "Version of this snapshot, starting at 1. Every version is retained and retrievable; there is no diff view.",
@@ -39,8 +40,8 @@
     },
     "origin": {
       "type": "string",
-      "description": "How the version was produced. Both paths write the same schema to the same store.",
-      "enum": ["authored", "extracted"]
+      "description": "How the version was produced: direct entry, agent extraction, or project import.",
+      "enum": ["authored", "extracted", "imported"]
     },
     "tags": {
       "type": "array",
@@ -77,7 +78,7 @@
             "additionalProperties": false,
             "required": ["id", "current_version", "versions", "status", "updated_at"],
             "properties": {
-              "id": { "type": "string", "pattern": "^req-[0-9]{3,}$" },
+              "id": { "type": "string", "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$" },
               "current_version": { "type": "integer", "minimum": 1 },
               "versions": {
                 "type": "array",

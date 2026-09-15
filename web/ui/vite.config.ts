@@ -8,9 +8,12 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
-    rollupOptions: {
+    // swagger-ui-react ships a single ~830kB vendor bundle that is already
+    // isolated into its own lazy-loaded chunk (see OpenAPIViewer.tsx) and
+    // can't be split further, so raise the warning threshold past it.
+    chunkSizeWarningLimit: 900,
+    rolldownOptions: {
       output: {
-        onlyExplicitManualChunks: true,
         manualChunks(id) {
           if (id.indexOf("node_modules") === -1) return;
           if (id.indexOf("/swagger-ui-es-bundle-core.js") !== -1) return "swagger-core";

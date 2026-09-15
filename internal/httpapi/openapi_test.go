@@ -112,6 +112,8 @@ func TestOpenAPIDocumentCoversEveryRoute(t *testing.T) {
 		url := strings.NewReplacer(
 			"{projectRef}", project,
 			"{requirementId}", requirementID,
+			"{agentName}", "missing",
+			"{ruleId}", "missing",
 			"{family}", "artifacts",
 			"{itemRef}", "missing",
 		).Replace(path)
