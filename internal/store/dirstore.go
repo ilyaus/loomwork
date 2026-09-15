@@ -488,9 +488,9 @@ func (d *DirStore) LoadRequirement(projectRef, requirementID string, version int
 	if err != nil {
 		return nil, err
 	}
-	entry, ok := index.find(requirementID)
-	if !ok {
-		return nil, fmt.Errorf("requirement %q in project %s: %w", requirementID, project.Name, ErrNotFound)
+	entry, err := resolveRequirementEntry(dir, index, requirementID)
+	if err != nil {
+		return nil, err
 	}
 	if version == 0 {
 		version = entry.CurrentVersion
@@ -538,9 +538,9 @@ func (d *DirStore) RequirementHistory(projectRef, requirementID string) ([]*mode
 	if err != nil {
 		return nil, err
 	}
-	entry, ok := index.find(requirementID)
-	if !ok {
-		return nil, fmt.Errorf("requirement %q in project %s: %w", requirementID, project.Name, ErrNotFound)
+	entry, err := resolveRequirementEntry(dir, index, requirementID)
+	if err != nil {
+		return nil, err
 	}
 	versions := append([]int(nil), entry.Versions...)
 	sort.Ints(versions)
@@ -581,6 +581,9 @@ func (d *DirStore) withRequirements(projectRef string, mutate func(project *mode
 	project, err := d.resolveLocked(projectRef)
 	if err != nil {
 		return err
+	}
+	if project.Import != nil && project.Import.RequirementsReadOnly {
+		return fmt.Errorf("imported project requirements are read-only; create or update tests in the local copy instead")
 	}
 	if err := d.ensureLayoutLocked(project.ID); err != nil {
 		return err
@@ -648,7 +651,28 @@ func readRequirement(dir, id string, version int) (*model.Requirement, error) {
 	if err := json.Unmarshal(raw, &requirement); err != nil {
 		return nil, fmt.Errorf("parse requirement %s: %w", path, err)
 	}
+	if ref := requirement.ReferenceID(); ref != requirement.ID {
+		requirement.DisplayID = ref
+	}
 	return &requirement, nil
+}
+
+func resolveRequirementEntry(dir string, index RequirementIndex, id string) (RequirementIndexEntry, error) {
+	if entry, ok := index.find(id); ok {
+		return entry, nil
+	}
+	if _, err := model.NormalizeRequirementID(id); err == nil {
+		for _, entry := range index.Requirements {
+			requirement, err := readRequirement(dir, entry.ID, entry.CurrentVersion)
+			if err != nil {
+				return RequirementIndexEntry{}, err
+			}
+			if strings.EqualFold(requirement.ReferenceID(), id) {
+				return entry, nil
+			}
+		}
+	}
+	return RequirementIndexEntry{}, fmt.Errorf("requirement %q: %w", id, ErrNotFound)
 }
 
 func writeRequirement(dir string, requirement *model.Requirement) error {

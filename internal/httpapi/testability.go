@@ -101,7 +101,7 @@ func (s *Server) testability(projectRef string) (TestabilityReport, error) {
 			continue
 		}
 		report.ActiveRequirements++
-		if linked[strings.ToLower(requirement.ID)] {
+		if linked[strings.ToLower(requirement.ID)] || linked[strings.ToLower(requirement.ReferenceID())] {
 			report.CoveredRequirements = append(report.CoveredRequirements, requirement.ID)
 		} else {
 			report.UncoveredRequirements = append(report.UncoveredRequirements, requirement.ID)

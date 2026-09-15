@@ -51,7 +51,7 @@ export function SuiteDetail({suite, compact = false}: {suite: TestSuite; compact
         ["Spec digest", suite.metadata?.spec_sha256 ? <code key="sha" className="small">{suite.metadata.spec_sha256.slice(0, 16)}…</code> : ""],
         ["Imported from", suite.metadata?.imported_from || ""],
         ["Requirement versions", requirementVersions.length ? (
-          <Chips key="reqs" items={requirementVersions.map(([id, version]) => `${id} v${version}`)} tone="ok" onClick={(label) => desktop.openItem({family: "requirements", ref: label.split(" ")[0], name: label.split(" ")[0]})} />
+          <Chips key="reqs" items={requirementVersions.map(([id, version]) => `${desktop.requirementName(id)} v${version}`)} tone="ok" onClick={(label) => desktop.openItem({family: "requirements", ref: label.split(" ")[0], name: label.split(" ")[0]})} />
         ) : ""],
         ["Override rules", suite.override_rules?.length ? (
           <Chips key="rules" items={suite.override_rules} tone="purple" onClick={(ref) => desktop.openItem({family: "override-rules", ref: ruleIdFromRef(ref), name: ref})} />
@@ -79,6 +79,7 @@ export function SuiteDetail({suite, compact = false}: {suite: TestSuite; compact
 }
 
 function CaseRow({testCase, open, onToggle, onOpenTab}: {testCase: TestCase; open: boolean; onToggle: () => void; onOpenTab: () => void}) {
+  const desktop = useDesktop();
   const linked = testCase.requirement_ids?.length > 0;
   return (
     <div className={`case-row ${open ? "open" : ""} ${linked ? "" : "unlinked"}`}>
@@ -91,7 +92,7 @@ function CaseRow({testCase, open, onToggle, onOpenTab}: {testCase: TestCase; ope
         <b className={`status-code s${String(testCase.expected?.status)[0]}xx`}>{testCase.expected?.status}</b>
         <span className="case-links">
           {linked
-            ? testCase.requirement_ids.map((id) => <span className="chip chip-ok" key={id}>{id}</span>)
+            ? testCase.requirement_ids.map((id) => <span className="chip chip-ok" key={id}>{desktop.requirementName(id)}</span>)
             : <span className="chip chip-warn" title="No requirement link">unlinked</span>}
           {testCase.overrides_applied?.map((ref) => <span className="chip chip-purple" key={ref}>{ref}</span>)}
         </span>

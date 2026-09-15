@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,8 +10,10 @@ import (
 	"time"
 
 	"github.com/ilyaus/loomwork/internal/model"
+	"github.com/ilyaus/loomwork/internal/projectimport"
 	"github.com/ilyaus/loomwork/internal/store"
 	"github.com/ilyaus/loomwork/internal/testgen"
+	"github.com/ilyaus/loomwork/internal/traceability"
 )
 
 // suiteDocument is a minimal importable suite linking one case to req-001 and
@@ -33,6 +36,47 @@ func suiteDocument(suiteID string) map[string]any {
 			},
 		},
 	}
+}
+
+func TestRequirementTestsFollowCurrentCasesAndScenarioRevisions(t *testing.T) {
+	handler, project, requirement := seededServer(t)
+	base := "/api/projects/" + project
+	var links map[string][]traceability.TestLink
+	mustCall(t, handler, http.MethodGet, base+"/requirement-tests", nil, &links, http.StatusOK)
+	if len(links[requirement]) != 0 {
+		t.Fatalf("initial links = %+v", links)
+	}
+	mustCall(t, handler, http.MethodPost, base+"/test-suites", suiteDocument("orders"), nil, http.StatusCreated)
+	var artifact model.Artifact
+	for _, content := range []string{"**Requirements:** req-001\nOld test", "**Requirements:** req-001\nCurrent test"} {
+		mustCall(t, handler, http.MethodPost, base+"/artifacts", map[string]any{"name": "local-test.md", "type": "spec", "tags": []string{"test-scenario"}, "content": content}, &artifact, http.StatusCreated)
+	}
+	mustCall(t, handler, http.MethodGet, base+"/requirement-tests", nil, &links, http.StatusOK)
+	if len(links[requirement]) != 2 || links[requirement][0].Family != "test-cases" || links[requirement][1].Ref != artifact.ID || links[requirement][1].Version != 2 {
+		t.Fatalf("current links = %+v", links)
+	}
+	var document ViewerDocument
+	for _, link := range links[requirement] {
+		mustCall(t, handler, http.MethodGet, base+"/items/"+link.Family+"/"+link.Ref, nil, &document, http.StatusOK)
+	}
+	suite := suiteDocument("orders")
+	suite["cases"].([]map[string]any)[0]["requirement_ids"] = []string{}
+	mustCall(t, handler, http.MethodPost, base+"/test-suites", suite, nil, http.StatusCreated)
+	mustCall(t, handler, http.MethodGet, base+"/requirement-tests", nil, &links, http.StatusOK)
+	if len(links[requirement]) != 1 || links[requirement][0].Family != "artifacts" {
+		t.Fatalf("stale suite link retained: %+v", links)
+	}
+	var health TestabilityReport
+	mustCall(t, handler, http.MethodGet, base+"/testability", nil, &health, http.StatusOK)
+	if len(health.CoveredRequirements) != 0 {
+		t.Fatalf("Markdown references counted as native coverage: %+v", health)
+	}
+	mustCall(t, handler, http.MethodPost, base+"/artifacts", map[string]any{"name": "local-test.md", "type": "spec", "tags": []string{"test-scenario"}, "content": "No requirement references now"}, nil, http.StatusCreated)
+	mustCall(t, handler, http.MethodGet, base+"/requirement-tests", nil, &links, http.StatusOK)
+	if len(links[requirement]) != 0 {
+		t.Fatalf("stale artifact link retained: %+v", links)
+	}
+	mustCall(t, handler, http.MethodGet, "/api/projects/missing/requirement-tests", nil, nil, http.StatusNotFound)
 }
 
 func TestArtifactsAreAddedAndVersionedOverHTTP(t *testing.T) {
@@ -69,6 +113,147 @@ func TestArtifactsAreAddedAndVersionedOverHTTP(t *testing.T) {
 	}
 	if message := errorText(t, handler, http.MethodPost, base, map[string]any{"name": "notes.md", "type": "spec", "content": "c"}, http.StatusBadRequest); !strings.Contains(message, "already exists with type") {
 		t.Errorf("type change error = %q", message)
+	}
+}
+
+func TestArtifactHistoryPreservesRevisionIdentity(t *testing.T) {
+	handler, project, _ := seededServer(t)
+	base := "/api/projects/" + project
+	var first, second model.Artifact
+	mustCall(t, handler, http.MethodPost, base+"/artifacts", map[string]any{"name": "test.md", "type": "spec", "content": "Original"}, &first, http.StatusCreated)
+	mustCall(t, handler, http.MethodPost, base+"/artifacts", map[string]any{"name": "test.md", "type": "spec", "content": "Revised"}, &second, http.StatusCreated)
+	item := base + "/items/artifacts/" + first.ID
+	var history []ItemVersion
+	mustCall(t, handler, http.MethodGet, item+"/history", nil, &history, http.StatusOK)
+	if len(history) != 2 || history[0].Version != 2 {
+		t.Fatalf("history = %+v", history)
+	}
+	var doc ViewerDocument
+	mustCall(t, handler, http.MethodGet, item, nil, &doc, http.StatusOK)
+	if string(doc.Body) != `"Original"` {
+		t.Fatalf("revision identity changed: %+v", doc)
+	}
+	mustCall(t, handler, http.MethodGet, item+"?version=2", nil, &doc, http.StatusOK)
+	if doc.Ref != second.ID || string(doc.Body) != `"Revised"` {
+		t.Fatalf("revision selection = %+v", doc)
+	}
+	mustCall(t, handler, http.MethodGet, item+"?version=3", nil, nil, http.StatusNotFound)
+}
+
+func TestCrossOriginAPIRequestsAreRejected(t *testing.T) {
+	handler := newServer(t)
+	for _, headers := range []map[string]string{
+		{"Sec-Fetch-Site": "cross-site"},
+		{"Origin": "https://untrusted.example"},
+		{"Origin": "null"},
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/api/project-import", strings.NewReader(`{}`))
+		for key, value := range headers {
+			request.Header.Set(key, value)
+		}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("headers %v: %d", headers, recorder.Code)
+		}
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	request.Header.Set("Origin", "http://localhost:5173")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("same-origin proxy: %d", recorder.Code)
+	}
+}
+
+func TestProjectImportOverHTTP(t *testing.T) {
+	handler := newServer(t)
+	source := t.TempDir()
+	for _, dir := range []string{".specify", "specs/001-example"} {
+		if err := os.MkdirAll(filepath.Join(source, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(source, "specs/001-example/spec.md"), []byte("# Example\n- **FR-001**: Return an order\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	request := projectimport.Request{Format: "spec-kit", Path: source, Name: "Imported"}
+	var preview projectimport.Preview
+	mustCall(t, handler, http.MethodPost, "/api/project-import/preview", request, &preview, http.StatusOK)
+	if preview.Requirements != 1 {
+		t.Fatalf("preview = %+v", preview)
+	}
+	var projects []ProjectSummary
+	mustCall(t, handler, http.MethodGet, "/api/projects", nil, &projects, http.StatusOK)
+	if len(projects) != 0 {
+		t.Fatal("preview stored a project")
+	}
+	var result projectimport.Result
+	mustCall(t, handler, http.MethodPost, "/api/project-import", request, &result, http.StatusCreated)
+	base := "/api/projects/" + result.Project.ID
+	var requirements []model.Requirement
+	mustCall(t, handler, http.MethodGet, base+"/requirements", nil, &requirements, http.StatusOK)
+	if len(requirements) != 1 || requirements[0].SourceRef != "specs/001-example/spec.md#FR-001" {
+		t.Fatalf("requirements = %+v", requirements)
+	}
+	for _, mutation := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodPost, base + "/requirements", map[string]any{"text": "new"}},
+		{http.MethodPut, base + "/requirements/req-001", map[string]any{"text": "amend"}},
+		{http.MethodPatch, base + "/requirements/req-001", map[string]any{"text": "version"}},
+		{http.MethodPost, base + "/requirements/req-001/status", map[string]any{"status": "obsolete"}},
+	} {
+		message := errorText(t, handler, mutation.method, mutation.path, mutation.body, http.StatusBadRequest)
+		if !strings.Contains(message, "read-only") {
+			t.Fatalf("lock error = %s", message)
+		}
+	}
+	var suite testgen.Result
+	mustCall(t, handler, http.MethodPost, base+"/test-suites", suiteDocument("local-suite"), &suite, http.StatusCreated)
+	mustCall(t, handler, http.MethodPost, base+"/test-suites", suiteDocument("local-suite"), &suite, http.StatusCreated)
+	if suite.Suite.Version != 2 {
+		t.Fatal("local tests could not be versioned")
+	}
+	mustCall(t, handler, http.MethodPost, "/api/project-import", request, nil, http.StatusBadRequest)
+	mustCall(t, handler, http.MethodPost, "/api/project-import/preview", map[string]any{"format": "unsupported", "path": source}, nil, http.StatusBadRequest)
+}
+
+func TestReportUploadsAreAppendOnlyAndVisible(t *testing.T) {
+	handler, project, _ := seededServer(t)
+	base := "/api/projects/" + project
+	name := "suite-orders/v1/run.json"
+	content := `{"run_timestamp":"2026-09-01T12:00:00Z","summary":{"total":2,"passed":1,"failed":1}}`
+	var report store.ReportFile
+	mustCall(t, handler, http.MethodPost, base+"/reports", map[string]any{"name": name, "content": content}, &report, http.StatusCreated)
+	if report.Name != name || report.Size != int64(len(content)) {
+		t.Fatalf("report = %+v", report)
+	}
+	var reports []store.ReportFile
+	mustCall(t, handler, http.MethodGet, base+"/reports", nil, &reports, http.StatusOK)
+	if len(reports) != 1 {
+		t.Fatalf("reports = %+v", reports)
+	}
+	var document ViewerDocument
+	mustCall(t, handler, http.MethodGet, base+"/items/reports/suite-orders%2Fv1%2Frun.json", nil, &document, http.StatusOK)
+	if !strings.Contains(string(document.Body), "run_timestamp") {
+		t.Fatalf("document = %+v", document)
+	}
+	for _, bad := range []map[string]any{
+		{"name": name, "content": "replacement"},
+		{"name": "../escape.txt", "content": "escape"},
+		{"name": "/absolute.txt", "content": "escape"},
+		{"name": "empty.txt", "content": ""},
+		{"name": "invalid.json", "content": "not JSON"},
+	} {
+		mustCall(t, handler, http.MethodPost, base+"/reports", bad, nil, http.StatusBadRequest)
+	}
+	var after TestabilityReport
+	mustCall(t, handler, http.MethodGet, base+"/testability", nil, &after, http.StatusOK)
+	if after.Reports != 1 || after.LastRun == nil || after.LastRun.Total != 2 {
+		t.Fatalf("testability = %+v", after)
 	}
 }
 
@@ -193,7 +378,7 @@ func TestItemHistoryRejectsUnversionedFamilies(t *testing.T) {
 	if len(history) != 2 || history[0].Version != 2 || history[0].Status != "active" || history[1].Status != "superseded" {
 		t.Fatalf("requirement history = %+v, want v2 active above v1 superseded", history)
 	}
-	if message := errorText(t, handler, http.MethodGet, "/api/projects/"+project+"/items/artifacts/x/history", nil, http.StatusBadRequest); !strings.Contains(message, "not versioned") {
+	if message := errorText(t, handler, http.MethodGet, "/api/projects/"+project+"/items/reports/x/history", nil, http.StatusBadRequest); !strings.Contains(message, "not versioned") {
 		t.Errorf("artifact history error = %q", message)
 	}
 	if code := call(t, handler, http.MethodGet, "/api/projects/"+project+"/items/test-suites/missing/history", nil, nil).Code; code != http.StatusNotFound {

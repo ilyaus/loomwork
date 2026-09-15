@@ -4,6 +4,7 @@ import {Link, useParams} from "react-router-dom";
 import {api} from "../api";
 import ChatDock from "../components/ChatDock";
 import Explorer from "../components/Explorer";
+import EntityListView from "../components/EntityListView";
 import Overview from "../components/Overview";
 import RequirementsView from "../components/RequirementsView";
 import TestSuitesView from "../components/TestSuitesView";
@@ -23,6 +24,7 @@ import {
   overviewTab,
 } from "../lib/desktop";
 import type {TreeItem} from "../types";
+import {baseName} from "../lib/format";
 
 const treeWidthKey = "loomwork.projectTreeWidth";
 const chatWidthKey = "loomwork.chatWidth";
@@ -66,6 +68,7 @@ export default function ProjectPage() {
     void queryClient.invalidateQueries({queryKey: ["project", projectRef]});
     void queryClient.invalidateQueries({queryKey: ["project-items", projectRef]});
     void queryClient.invalidateQueries({queryKey: ["requirements", projectRef]});
+    void queryClient.invalidateQueries({queryKey: ["requirement-tests", projectRef]});
     void queryClient.invalidateQueries({queryKey: ["testability", projectRef]});
     void queryClient.invalidateQueries({queryKey: ["item", projectRef]});
     void queryClient.invalidateQueries({queryKey: ["item-history", projectRef]});
@@ -74,19 +77,23 @@ export default function ProjectPage() {
 
   const focusTab = useCallback((tab: Tab) => {
     setTabState((current) => ({
-      tabs: current.tabs.some((existing) => existing.key === tab.key) ? current.tabs : [...current.tabs, tab],
+      tabs: current.tabs.some((existing) => existing.key === tab.key) ? current.tabs.map(existing => existing.key === tab.key ? tab : existing) : [...current.tabs, tab],
       active: tab.key,
     }));
   }, []);
 
+  const requirementNames = useMemo(() => new Map((tree.data?.groups.find(group => group.family === "requirements")?.items || []).map(item => [item.ref, item.name])), [tree.data]);
+  const requirementsReadOnly = Boolean(project.data?.import?.requirementsReadOnly);
   const actions = useMemo<DesktopActions>(() => ({
     projectRef,
-    openItem: (item) => focusTab(itemTab(item)),
+    requirementsReadOnly,
+    requirementName: ref => requirementNames.get(ref) || ref,
+    openItem: (item, selectedTest) => focusTab({...itemTab({...item, name: item.family === "requirements" ? requirementNames.get(item.ref) || item.name : item.name}), selectedTest}),
     openFamily: (family) => focusTab({key: familyKey(family), kind: "family", family, name: familyLabels[family] || family}),
     openOverview: () => setTabState((current) => ({...current, active: "overview"})),
-    openDialog: (kind, payload) => setDialog({kind, payload}),
+    openDialog: (kind, payload) => { if (kind !== "requirement" || !requirementsReadOnly) setDialog({kind, payload}); },
     refresh,
-  }), [projectRef, focusTab, refresh]);
+  }), [projectRef, requirementsReadOnly, requirementNames, focusTab, refresh]);
 
   function closeTab(key: string) {
     if (key === "overview") return;
@@ -189,7 +196,7 @@ export default function ProjectPage() {
                   key={tab.key}
                 >
                   {tab.kind === "overview" && <Icon.Home size={13} />}
-                  <span className="tab-name">{tab.name}</span>
+                  <span className="tab-name">{tab.kind === "item" && ["artifacts", "reports"].includes(tab.family) ? baseName(tab.name) : tab.name}</span>
                   {tab.kind === "item" && tab.version ? <small>v{tab.version}</small> : null}
                   {tab.key !== "overview" && (
                     <span
@@ -214,7 +221,10 @@ export default function ProjectPage() {
               {activeTab.kind === "family" && activeTab.family === "test-suites" && (
                 <TestSuitesView items={tree.data.groups.find((group) => group.family === "test-suites")?.items || []} />
               )}
-              {activeTab.kind === "item" && <ItemViewer key={activeTab.key} family={activeTab.family} ref_={activeTab.ref} />}
+              {activeTab.kind === "family" && !["requirements", "test-suites"].includes(activeTab.family) && (
+                <EntityListView key={activeTab.family} family={activeTab.family} items={tree.data.groups.find(group => group.family === activeTab.family)?.items || []} />
+              )}
+              {activeTab.kind === "item" && <ItemViewer key={activeTab.key} family={activeTab.family} ref_={activeTab.ref} selectedTest={activeTab.selectedTest} />}
             </div>
           </section>
           {chatOpen && (

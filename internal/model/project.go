@@ -23,7 +23,17 @@ type Project struct {
 	Artifacts   []Artifact       `json:"artifacts"`
 	// Index caches counts derived from the project directory so a landing view
 	// can summarize many projects without scanning each one's subfolders.
-	Index *ProjectIndex `json:"index,omitempty"`
+	Index         *ProjectIndex       `json:"index,omitempty"`
+	Import        *ProjectImport      `json:"import,omitempty"`
+	TestDocuments *TestDocumentConfig `json:"testDocuments,omitempty"`
+}
+
+type ProjectImport struct {
+	Format               string    `json:"format"`
+	SourcePath           string    `json:"sourcePath"`
+	ImportedAt           time.Time `json:"importedAt"`
+	Features             []string  `json:"features"`
+	RequirementsReadOnly bool      `json:"requirementsReadOnly"`
 }
 
 // ProjectIndex is the cached summary a store maintains in the project document.
@@ -85,6 +95,9 @@ func (p *Project) AddArtifact(spec ArtifactSpec) (Artifact, error) {
 		}
 		version = previous.Version + 1
 		parentID = previous.ID
+		if spec.Metadata == nil {
+			spec.Metadata = previous.Metadata
+		}
 	}
 
 	artifact := Artifact{

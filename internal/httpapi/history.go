@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sort"
 	"time"
+
+	"github.com/ilyaus/loomwork/internal/store"
 )
 
 // ItemVersion is one retained version of a versioned entity, newest first, so a
@@ -23,6 +25,20 @@ type ItemVersion struct {
 func (s *Server) itemHistory(w http.ResponseWriter, _ *http.Request, projectRef, family, ref string) {
 	var versions []ItemVersion
 	switch family {
+	case familyArtifacts:
+		project, err := s.store.Resolve(projectRef)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		artifact, ok := project.ResolveArtifact(ref)
+		if !ok {
+			writeStoreError(w, fmt.Errorf("artifact %q: %w", ref, store.ErrNotFound))
+			return
+		}
+		for _, revision := range project.ArtifactHistory(artifact.Name) {
+			versions = append(versions, ItemVersion{Version: revision.Version, Summary: revision.Name, CreatedAt: revision.CreatedAt})
+		}
 	case familyRequirements:
 		history, err := s.store.RequirementHistory(projectRef, ref)
 		if err != nil {

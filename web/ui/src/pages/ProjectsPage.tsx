@@ -2,6 +2,7 @@ import {FormEvent, useMemo, useState} from "react";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {Link, useNavigate} from "react-router-dom";
 import {api} from "../api";
+import ProjectImportDialog from "../components/dialogs/ProjectImportDialog";
 import {Icon} from "../components/Icons";
 import {Badge, Dialog, EmptyState, ErrorPanel, Field, Spinner} from "../components/ui";
 import {percent, splitTags, timeAgo} from "../lib/format";
@@ -10,6 +11,7 @@ import type {ProjectSummary} from "../types";
 export default function ProjectsPage() {
   const projects = useQuery({queryKey: ["projects"], queryFn: api.listProjects});
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [filter, setFilter] = useState("");
 
   const visible = useMemo(() => {
@@ -37,6 +39,7 @@ export default function ProjectsPage() {
                 <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter projects" />
               </label>
             )}
+            <button type="button" className="btn" onClick={() => setImporting(true)}><Icon.Upload size={15} /> Import project</button>
             <button type="button" className="btn primary" onClick={() => setCreating(true)}>
               <Icon.Plus size={15} /> New project
             </button>
@@ -65,6 +68,7 @@ export default function ProjectsPage() {
         )}
       </div>
       <CreateProjectDialog open={creating} onClose={() => setCreating(false)} />
+      {importing && <ProjectImportDialog onClose={() => setImporting(false)} />}
     </div>
   );
 }

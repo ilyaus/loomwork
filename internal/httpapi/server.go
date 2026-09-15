@@ -70,6 +70,10 @@ func (s *Server) Handler() http.Handler {
 // routeAPI dispatches on the path segments after /api/. Go 1.21's ServeMux has no
 // method or wildcard patterns, so routing is explicit.
 func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && r.Header.Get("Sec-Fetch-Site") != "same-origin" && !sameOrigin(r)) {
+		writeError(w, http.StatusForbidden, fmt.Errorf("cross-origin API requests are not allowed"))
+		return
+	}
 	segments, err := pathSegments(strings.TrimPrefix(r.URL.EscapedPath(), "/api/"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -90,6 +94,10 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 			http.MethodGet:  s.listProjects,
 			http.MethodPost: s.createProject,
 		})
+	case len(segments) == 2 && segments[0] == "project-import" && segments[1] == "preview":
+		s.route(w, r, map[string]http.HandlerFunc{http.MethodPost: s.previewProjectImport})
+	case len(segments) == 1 && segments[0] == "project-import":
+		s.route(w, r, map[string]http.HandlerFunc{http.MethodPost: s.importProject})
 	case len(segments) == 2 && segments[0] == "projects":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet: s.projectHandler(s.getProject),
@@ -99,6 +107,8 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 			http.MethodGet:  s.projectHandler(s.listSources),
 			http.MethodPost: s.projectHandler(s.addSource),
 		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "requirement-tests":
+		s.route(w, r, map[string]http.HandlerFunc{http.MethodGet: s.projectHandler(s.requirementTests)})
 	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "requirements":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet:  s.projectHandler(s.listRequirements),
@@ -116,10 +126,20 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request) {
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodPost: s.projectHandler(s.chat),
 		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "reports":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet:  s.projectHandler(s.listReports),
+			http.MethodPost: s.projectHandler(s.addReport),
+		})
 	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "artifacts":
 		s.route(w, r, map[string]http.HandlerFunc{
 			http.MethodGet:  s.projectHandler(s.listArtifacts),
 			http.MethodPost: s.projectHandler(s.addArtifact),
+		})
+	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "test-document-settings":
+		s.route(w, r, map[string]http.HandlerFunc{
+			http.MethodGet: s.projectHandler(s.getTestDocumentSettings),
+			http.MethodPut: s.projectHandler(s.setTestDocumentSettings),
 		})
 	case len(segments) == 3 && segments[0] == "projects" && segments[2] == "test-suites":
 		s.route(w, r, map[string]http.HandlerFunc{
@@ -305,6 +325,11 @@ func versionParam(r *http.Request) (int, error) {
 		return 0, fmt.Errorf("version %q must be an integer of 1 or greater", raw)
 	}
 	return version, nil
+}
+
+func sameOrigin(r *http.Request) bool {
+	origin, err := url.Parse(r.Header.Get("Origin"))
+	return err == nil && origin.Host == r.Host && (origin.Scheme == "http" || origin.Scheme == "https")
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

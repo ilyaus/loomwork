@@ -44,7 +44,7 @@ export function TestCaseCard({testCase, compact = false}: {testCase: TestCase; c
         <section>
           <h3>Requirements</h3>
           <Chips
-            items={testCase.requirement_ids}
+            items={testCase.requirement_ids.map(desktop.requirementName)}
             tone="ok"
             empty="No linked requirement (flags the suite incomplete)"
             onClick={(id) => desktop.openItem({family: "requirements", ref: id, name: id})}

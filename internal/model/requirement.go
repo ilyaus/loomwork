@@ -72,11 +72,12 @@ const (
 	RequirementOriginAuthored RequirementOrigin = "authored"
 	// RequirementOriginExtracted is LLM/agent extraction from source docs.
 	RequirementOriginExtracted RequirementOrigin = "extracted"
+	RequirementOriginImported  RequirementOrigin = "imported"
 )
 
 // RequirementOrigins lists every supported origin.
 func RequirementOrigins() []RequirementOrigin {
-	return []RequirementOrigin{RequirementOriginAuthored, RequirementOriginExtracted}
+	return []RequirementOrigin{RequirementOriginAuthored, RequirementOriginExtracted, RequirementOriginImported}
 }
 
 // ParseRequirementOrigin validates a raw origin string.
@@ -95,6 +96,7 @@ func ParseRequirementOrigin(raw string) (RequirementOrigin, error) {
 // browser UI and future agent integrations share.
 type Requirement struct {
 	ID         string            `json:"id"`
+	DisplayID  string            `json:"display_id,omitempty"`
 	Version    int               `json:"version"`
 	Text       string            `json:"text"`
 	SourceType SourceType        `json:"source_type,omitempty"`
@@ -109,6 +111,7 @@ type Requirement struct {
 // RequirementSpec describes a requirement version to be created. The store
 // assigns id, version, and timestamp.
 type RequirementSpec struct {
+	ID         string
 	Text       string
 	SourceType SourceType
 	SourceRef  string

@@ -44,6 +44,20 @@ export type Project = {
   updatedAt: string;
   artifacts: Artifact[];
   index?: {requirements: number; activeRequirements: number};
+  testDocuments?: {roots: string[]};
+  import?: {format: string; sourcePath: string; importedAt: string; features: string[]; requirementsReadOnly: boolean};
+};
+
+export type ProjectImportRequest = {format: string; path: string; name?: string; features?: string[]};
+export type ProjectImportPreview = {
+  format: string;
+  sourcePath: string;
+  name: string;
+  features: {id: string; title: string; requirements: number; artifacts: number; testDocuments: number}[];
+  requirements: number;
+  artifacts: number;
+  testDocuments: number;
+  warnings: string[];
 };
 
 export type Testability = {
@@ -92,15 +106,25 @@ export type RequirementStatus = "active" | "obsolete" | "superseded";
 
 export type Requirement = {
   id: string;
+  display_id?: string;
   version: number;
   text: string;
   source_type?: SourceType;
   source_ref?: string;
   status: RequirementStatus;
-  origin: "authored" | "extracted";
+  origin: "authored" | "extracted" | "imported";
   tags?: string[];
   metadata?: Record<string, string>;
   created_at: string;
+};
+
+export type RequirementTestLink = {
+  family: "test-cases" | "artifacts";
+  ref: string;
+  name: string;
+  version: number;
+  suiteId?: string;
+  suiteTitle?: string;
 };
 
 export type RequirementWrite = {
@@ -187,6 +211,9 @@ export type TestCase = {
   tags?: string[];
   metadata?: Record<string, string>;
 };
+
+export type DocumentSuite = {id: string; name: string; root: string; documents: Artifact[]};
+export type TestDocumentSettings = {roots: string[]; defaults: string[]};
 
 export type TestSuite = {
   suite_id: string;

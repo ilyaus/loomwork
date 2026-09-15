@@ -1,6 +1,7 @@
 # build output
 /bin/
 /loomwork
+/web/dist/
 
 # local workspace state and real (non-example) configuration
 /.loomwork/

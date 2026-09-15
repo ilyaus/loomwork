@@ -329,10 +329,11 @@ func flagUnknownRequirements(suite *model.TestSuite, requirements []*model.Requi
 	known := make(map[string]bool, len(requirements))
 	for _, requirement := range requirements {
 		known[strings.ToLower(requirement.ID)] = true
+		known[strings.ToLower(requirement.ReferenceID())] = true
 	}
 	for _, testCase := range suite.Cases {
 		for _, id := range testCase.RequirementIDs {
-			if !known[id] {
+			if !known[strings.ToLower(id)] {
 				suite.FlagIncomplete(fmt.Sprintf("%s: links to requirement %s, which is not an active requirement of this project", testCase.ID, id))
 			}
 		}
@@ -414,7 +415,7 @@ func SuiteSchema() map[string]any {
 					"properties": map[string]any{
 						"id":                map[string]any{"type": "string", "pattern": "^tc-[0-9]{3,}$"},
 						"name":              map[string]any{"type": "string"},
-						"requirement_ids":   map[string]any{"type": "array", "items": map[string]any{"type": "string", "pattern": "^req-[0-9]{3,}$"}},
+						"requirement_ids":   map[string]any{"type": "array", "items": map[string]any{"type": "string", "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$"}},
 						"overrides_applied": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 						"scenario":          map[string]any{"type": "string", "enum": scenarioEnum()},
 						"request": map[string]any{

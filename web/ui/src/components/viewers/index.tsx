@@ -3,7 +3,7 @@ import {useQuery} from "@tanstack/react-query";
 import {api} from "../../api";
 import {familyIcon} from "../Icons";
 import {Badge, ErrorPanel, Spinner, StatusBadge} from "../ui";
-import {formatDate} from "../../lib/format";
+import {baseName, formatDate} from "../../lib/format";
 import {familyLabels, useDesktop} from "../../lib/desktop";
 import type {ItemVersion, ViewerDocument} from "../../types";
 import AgentDefinitionViewer from "./AgentDefinitionViewer";
@@ -15,12 +15,14 @@ import ReportViewer from "./ReportViewer";
 import RequirementViewer from "./RequirementViewer";
 import TestCaseViewer from "./TestCaseViewer";
 import TestSuiteViewer from "./TestSuiteViewer";
+import DocumentSuiteViewer from "./DocumentSuiteViewer";
 import {LogViewer, TextViewer} from "./TextViewer";
 
 export type ViewerProps = {
   document: ViewerDocument;
   // readOnly is set while an older version is displayed.
   readOnly: boolean;
+  selectedTest?: string;
 };
 
 type ViewerComponent = (props: ViewerProps) => React.ReactNode;
@@ -32,6 +34,7 @@ const byArtifactType: Record<string, ViewerComponent> = {
   "agent-definition": AgentDefinitionViewer,
   "override-rule": OverrideRuleViewer,
   "test-suite": TestSuiteViewer,
+  "document-suite": DocumentSuiteViewer,
   "test-case": TestCaseViewer,
   "test-report": ReportViewer,
   "test-result": ReportViewer,
@@ -52,12 +55,13 @@ export function pickViewer(document: ViewerDocument): ViewerComponent {
   return byMediaType[mediaType] || TextViewer;
 }
 
-const versionedFamilies = new Set(["requirements", "agent-definitions", "override-rules", "test-suites"]);
+const versionedFamilies = new Set(["requirements", "agent-definitions", "override-rules", "test-suites", "artifacts"]);
 
 // ItemViewer loads one entity, offers its retained versions, and hands the
 // document to the matching viewer.
-export function ItemViewer({family, ref_}: {family: string; ref_: string}) {
-  const {projectRef} = useDesktop();
+export function ItemViewer({family, ref_, selectedTest, embedded = false}: {family: string; ref_: string; selectedTest?: string; embedded?: boolean}) {
+  const desktop = useDesktop();
+  const {projectRef} = desktop;
   const [version, setVersion] = useState<number | undefined>(undefined);
   const document = useQuery({
     queryKey: ["item", projectRef, family, ref_, version || "current"],
@@ -74,33 +78,37 @@ export function ItemViewer({family, ref_}: {family: string; ref_: string}) {
   if (!document.data) return null;
 
   const current = history.data?.[0]?.version;
-  const readOnly = Boolean(version && current && version !== current);
+  const historical = Boolean(document.data.version && current && document.data.version !== current);
+  const readOnly = embedded || historical || (family === "requirements" && desktop.requirementsReadOnly);
+  const selectVersion = (next: number | undefined) => setVersion(family !== "artifacts" && next === current ? undefined : next);
   const Component = pickViewer(document.data);
   const HeadIcon = familyIcon(family, document.data.artifactType);
 
   return (
-    <div className="item-viewer">
+    <div className={`item-viewer ${embedded ? "embedded" : ""}`}>
       <header className="item-head">
         <HeadIcon size={16} className={`fam fam-${family} type-${document.data.artifactType}`} />
         <span className="item-family">{familyLabels[family] || family}</span>
-        <span className="item-name" title={document.data.name}>{document.data.name}</span>
+        <span className="item-name" title={document.data.name}>{["artifacts", "reports"].includes(family) ? baseName(document.data.name) : document.data.name}</span>
         <Badge>{document.data.artifactType}</Badge>
         {document.data.mediaType && !["application/json", "text/plain"].includes(document.data.mediaType) && (
           <span className="muted small mono">{document.data.mediaType}</span>
         )}
         <span className="spacer" />
+        {family === "artifacts" && !readOnly && <button type="button" className="btn small" onClick={() => desktop.openDialog("artifact", document.data!.ref)}>New version</button>}
         {history.data && history.data.length > 0 && (
-          <VersionSwitcher versions={history.data} selected={version || current || document.data.version || 1} onSelect={(next) => setVersion(next === current ? undefined : next)} />
+          <VersionSwitcher versions={history.data} selected={document.data.version || 1} onSelect={selectVersion} />
         )}
       </header>
-      {readOnly && (
+      {historical && (
         <div className="notice">
-          Viewing version {version}. The current version is v{current}; older versions are read-only snapshots.
-          <button type="button" className="btn small" onClick={() => setVersion(undefined)}>Back to current</button>
+          Viewing version {document.data.version}. The current version is v{current}; older versions are read-only snapshots.
+          <button type="button" className="btn small" onClick={() => selectVersion(current)}>Back to current</button>
         </div>
       )}
+      {family === "requirements" && desktop.requirementsReadOnly && <div className="notice">Imported requirement. This snapshot is read-only; test work stays in your local copy.</div>}
       <div className="item-body">
-        <Component document={document.data} readOnly={readOnly} key={`${document.data.ref}:${document.data.version || "current"}`} />
+        <Component document={document.data} readOnly={readOnly} selectedTest={selectedTest} key={`${document.data.ref}:${document.data.version || "current"}`} />
       </div>
     </div>
   );

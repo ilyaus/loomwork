@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Loomwork HTTP API",
-    "description": "JSON API the loomwork browser UI runs on, served by `loomwork serve` over loopback only. It is a handler layer over internal/store: every response document is a stored domain document, so this description doubles as the contract for scripts and agents that read a workspace without shelling out to the CLI. There is no authentication because the server is single-user, local-first, and never reachable from another host.",
+    "description": "JSON API the loomwork browser UI runs on, served by `loomwork serve` over loopback only. It is a handler layer over internal/store: every response document is a stored domain document, so this description doubles as the contract for scripts and agents that read a workspace without shelling out to the CLI. There is no authentication because the server is single-user, local-first, and never reachable from another host. API requests from unrelated browser origins are rejected with HTTP 403 before reading or writing workspace data.",
     "version": "0.1.0",
     "license": {
       "name": "MIT",
@@ -106,6 +106,30 @@
         }
       }
     },
+    "/api/project-import/preview": {
+      "post": {
+        "tags": ["projects"], "operationId": "previewProjectImport", "summary": "Inspect a local project without storing it.",
+        "description": "The spec-kit adapter reads numbered FR, NFR, and SC requirements and documentation under specs/, plus the constitution. Test Markdown is preserved, not converted or executed. Symbolic-link documents are not imported. Limits: 6 MB per document, 32 MB per snapshot, 2000 entries, 16 directory levels.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectImportRequest"}}}},
+        "responses": {
+          "200": {"description": "Feature counts and warnings; nothing is written.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectImportPreview"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}
+        }
+      }
+    },
+    "/api/project-import": {
+      "post": {
+        "tags": ["projects"], "operationId": "importProject", "summary": "Create an independent local project snapshot.",
+        "description": "Reads the selected features again and atomically publishes a new project. Duplicate project names are rejected. Imported requirements cannot be created, amended, versioned, or have status changed. Artifacts, test suites, agents, rules, and reports remain writable locally. The source directory is never modified. No export or synchronization is performed.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectImportRequest"}}}},
+        "responses": {
+          "201": {"description": "Stored project and import summary.", "content": {"application/json": {"schema": {
+            "type": "object", "required": ["project", "preview"], "properties": {"project": {"$ref": "#/components/schemas/Project"}, "preview": {"$ref": "#/components/schemas/ProjectImportPreview"}}
+          }}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}
+        }
+      }
+    },
     "/api/projects": {
       "get": {
         "tags": ["projects"],
@@ -149,6 +173,34 @@
             }
           },
           "400": {"$ref": "#/components/responses/BadRequest"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/reports": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["artifacts"],
+        "operationId": "listReports",
+        "summary": "List retained execution report files.",
+        "responses": {
+          "200": {"description": "Reports ordered by relative path.", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/ReportFile"}}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "post": {
+        "tags": ["artifacts"],
+        "operationId": "addReport",
+        "summary": "Upload an append-only execution report.",
+        "description": "Accepts UTF-8 text up to 6 MB. Names are relative paths inside reports/. Existing files cannot be replaced. A .json file must contain valid JSON.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "additionalProperties": false, "required": ["name", "content"],
+          "properties": {"name": {"type": "string", "minLength": 1}, "content": {"type": "string", "minLength": 1}}
+        }}}},
+        "responses": {
+          "201": {"description": "Stored report.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReportFile"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
         }
       }
     },
@@ -200,6 +252,39 @@
         },
         "responses": {
           "200": {"$ref": "#/components/responses/SourceList"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/test-document-settings": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["test-suites"], "operationId": "getTestDocumentSettings", "summary": "Read document-suite folder settings.",
+        "responses": {
+          "200": {"description": "Effective roots and import defaults.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestDocumentSettings"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "put": {
+        "tags": ["test-suites"], "operationId": "setTestDocumentSettings", "summary": "Group copied QA folders as document suites.",
+        "description": "Roots are non-overlapping project-relative folder prefixes without wildcards. Empty roots disables grouping. Spec-kit defaults to each imported feature's sdd-qa folder. No files are moved, fetched, or deleted; artifact IDs, versions, and requirement links stay intact. Document suites appear in the test-suites tree group with family document-suites and artifactType document-suite; they are not executable native suites and do not contribute to native coverage.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestDocumentConfig"}}}},
+        "responses": {
+          "200": {"description": "Saved folder settings.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestDocumentSettings"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/projects/{projectRef}/requirement-tests": {
+      "parameters": [{"$ref": "#/components/parameters/ProjectRef"}],
+      "get": {
+        "tags": ["requirements"],
+        "operationId": "getRequirementTests",
+        "summary": "List current test links for every requirement.",
+        "description": "Derived on read from current suite cases and latest scenario artifacts. Native cases use requirement_ids. Scenario documents must have document_kind=test-scenario metadata or the test-scenario tag; explicit requirement_ids metadata and Markdown Purpose/Requirements/Covers fields are recognized. Imported spec-kit references also use FR filenames and frontmatter fr, matched within the same feature. Incidental prose and code-block references are ignored. Markdown links do not contribute to native test coverage or imply execution. Empty arrays mean no linked tests; these are current links, not historical execution records.",
+        "responses": {
+          "200": {"description": "Requirement IDs mapped to test links.", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/components/schemas/RequirementTestLink"}}}}}},
           "400": {"$ref": "#/components/responses/BadRequest"},
           "404": {"$ref": "#/components/responses/NotFound"}
         }
@@ -695,7 +780,7 @@
         "tags": ["desktop"],
         "operationId": "getItemHistory",
         "summary": "List the retained versions of a versioned item, newest first.",
-        "description": "Works for requirements, agent-definitions, override-rules, and test-suites; other families are rejected with 400. Read a listed version's full document from the item endpoint with ?version=N.",
+        "description": "Works for requirements, artifacts, agent-definitions, override-rules, and test-suites; other families are rejected with 400. Read a listed version's full document from the item endpoint with ?version=N. An artifact ID still selects that immutable revision when no version is specified.",
         "responses": {
           "200": {
             "description": "Version summaries.",
@@ -728,7 +813,7 @@
         "in": "path",
         "required": true,
         "description": "Requirement identity, stable across versions.",
-        "schema": {"type": "string", "pattern": "^req-[0-9]{3,}$"}
+        "schema": {"type": "string", "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$"}
       },
       "ItemFamily": {
         "name": "family",
@@ -737,7 +822,7 @@
         "description": "Typed project subfolder or nested test-case family.",
         "schema": {
           "type": "string",
-          "enum": ["requirements", "agent-definitions", "override-rules", "test-suites", "test-cases", "reports", "artifacts"]
+          "enum": ["requirements", "agent-definitions", "override-rules", "test-suites", "document-suites", "test-cases", "reports", "artifacts"]
         }
       },
       "ItemRef": {
@@ -864,6 +949,63 @@
       }
     },
     "schemas": {
+      "TestDocumentConfig": {
+        "type": "object", "additionalProperties": false, "required": ["roots"],
+        "properties": {"roots": {"type": "array", "maxItems": 1000, "items": {"type": "string"}}}
+      },
+      "TestDocumentSettings": {
+        "type": "object", "required": ["roots", "defaults"],
+        "properties": {"roots": {"type": "array", "items": {"type": "string"}}, "defaults": {"type": "array", "items": {"type": "string"}}}
+      },
+      "DocumentSuite": {
+        "type": "object", "required": ["id", "name", "root", "documents"],
+        "description": "A derived collection of current QA documents, returned as the body of a document-suites viewer item. Individual documents retain their artifact IDs and version history.",
+        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "root": {"type": "string"}, "documents": {"type": "array", "items": {"$ref": "#/components/schemas/Artifact"}}}
+      },
+      "RequirementTestLink": {
+        "type": "object", "required": ["family", "ref", "name", "version"],
+        "properties": {
+          "family": {"type": "string", "enum": ["test-cases", "artifacts"]},
+          "ref": {"type": "string", "description": "Item reference: suite~tc-id for a native case, artifact ID for a scenario document."},
+          "name": {"type": "string"}, "version": {"type": "integer", "minimum": 1},
+          "suiteId": {"type": "string"}, "suiteTitle": {"type": "string"}
+        }
+      },
+      "ProjectImportRequest": {
+        "type": "object", "additionalProperties": false, "required": ["format", "path"],
+        "properties": {
+          "format": {"type": "string", "description": "Registered adapter name; currently spec-kit."},
+          "path": {"type": "string", "minLength": 1, "description": "Absolute source directory on the server machine."},
+          "name": {"type": "string", "description": "Local project name; defaults to the source directory name."},
+          "features": {"type": "array", "items": {"type": "string"}, "description": "Feature directory names. Omitted or empty selects all features."}
+        }
+      },
+      "ProjectImportPreview": {
+        "type": "object", "required": ["format", "sourcePath", "name", "features", "requirements", "artifacts", "testDocuments", "warnings"],
+        "properties": {
+          "format": {"type": "string"}, "sourcePath": {"type": "string"}, "name": {"type": "string"},
+          "requirements": {"type": "integer", "minimum": 0}, "artifacts": {"type": "integer", "minimum": 0}, "testDocuments": {"type": "integer", "minimum": 0},
+          "warnings": {"type": "array", "items": {"type": "string"}},
+          "features": {"type": "array", "items": {
+            "type": "object", "required": ["id", "title", "requirements", "artifacts", "testDocuments"],
+            "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "requirements": {"type": "integer"}, "artifacts": {"type": "integer"}, "testDocuments": {"type": "integer"}}
+          }}
+        }
+      },
+      "ProjectImport": {
+        "type": "object", "required": ["format", "sourcePath", "importedAt", "features", "requirementsReadOnly"],
+        "properties": {
+          "format": {"type": "string"}, "sourcePath": {"type": "string"}, "importedAt": {"type": "string", "format": "date-time"},
+          "features": {"type": "array", "items": {"type": "string"}}, "requirementsReadOnly": {"type": "boolean"}
+        }
+      },
+      "ReportFile": {
+        "type": "object", "required": ["name", "mediaType", "size", "updatedAt"],
+        "properties": {
+          "name": {"type": "string"}, "mediaType": {"type": "string"},
+          "size": {"type": "integer", "minimum": 0}, "updatedAt": {"type": "string", "format": "date-time"}
+        }
+      },
       "Error": {
         "type": "object",
         "required": ["error"],
@@ -1015,7 +1157,9 @@
             "type": "array",
             "items": {"$ref": "#/components/schemas/Artifact"}
           },
-          "index": {"$ref": "#/components/schemas/ProjectIndex"}
+          "index": {"$ref": "#/components/schemas/ProjectIndex"},
+          "import": {"$ref": "#/components/schemas/ProjectImport"},
+          "testDocuments": {"$ref": "#/components/schemas/TestDocumentConfig"}
         }
       },
       "ProjectIndex": {
@@ -1189,7 +1333,7 @@
       "RequirementOrigin": {
         "type": "string",
         "description": "How a requirement version was produced.",
-        "enum": ["authored", "extracted"]
+        "enum": ["authored", "extracted", "imported"]
       },
       "RequirementWrite": {
         "type": "object",
@@ -1218,7 +1362,8 @@
         "description": "One immutable version snapshot, as stored in requirements/<id>.v<version>.json. The full constraints live in docs/schemas/requirement.schema.json.",
         "required": ["id", "version", "text", "status", "origin", "created_at"],
         "properties": {
-          "id": {"type": "string", "pattern": "^req-[0-9]{3,}$"},
+          "id": {"type": "string", "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$"},
+          "display_id": {"type": "string", "description": "Spec reference for a legacy import; both this reference and the stored id resolve to the same history."},
           "version": {"type": "integer", "minimum": 1},
           "text": {"type": "string", "minLength": 1},
           "source_type": {"$ref": "#/components/schemas/SourceType"},
@@ -1283,7 +1428,7 @@
         "properties": {
           "id": {"type": "string", "pattern": "^tc-[0-9]{3,}$", "description": "Assigned in tc-NNN order when omitted on import."},
           "name": {"type": "string", "minLength": 1},
-          "requirement_ids": {"type": "array", "items": {"type": "string", "pattern": "^req-[0-9]{3,}$"}},
+          "requirement_ids": {"type": "array", "items": {"type": "string", "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$"}},
           "overrides_applied": {"type": "array", "items": {"type": "string"}, "description": "Override rule citations in rule-id-vN form."},
           "scenario": {"$ref": "#/components/schemas/TestScenario"},
           "request": {"$ref": "#/components/schemas/TestRequest"},

@@ -20,7 +20,7 @@
     "requirement_ids": {
       "type": "array",
       "description": "Requirement ids this case exercises. An empty list is schema-valid but flags the containing suite as incomplete, so an agent cannot hide unlinked tests by omitting the field.",
-      "items": { "type": "string", "pattern": "^req-[0-9]{3,}$" },
+      "items": { "type": "string", "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$" },
       "uniqueItems": true
     },
     "overrides_applied": {
@@ -166,7 +166,7 @@
           "type": "object",
           "description": "Requirement id to the version supplied as input, so a suite records exactly which requirement snapshots it was generated against.",
           "additionalProperties": { "type": "integer", "minimum": 1 },
-          "propertyNames": { "pattern": "^req-[0-9]{3,}$" }
+          "propertyNames": { "pattern": "^(req-[0-9]{3,}|[0-9]{3,}-(FR|NFR|SC)-[0-9]+[A-Z]?)$" }
         },
         "override_rules": {
           "type": "array",

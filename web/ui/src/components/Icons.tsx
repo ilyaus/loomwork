@@ -26,6 +26,7 @@ export const Icon = {
   Case: (p: IconProps) => <svg {...base(p)}><path d="M9 3v7l-5 8a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-8V3" /><path d="M8 3h8" /></svg>,
   Report: (p: IconProps) => <svg {...base(p)}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>,
   Artifact: (p: IconProps) => <svg {...base(p)}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></svg>,
+  Folder: (p: IconProps) => <svg {...base(p)}><path d="M3 7V5h6l2 2h10v13H3z" /></svg>,
   Chevron: (p: IconProps) => <svg {...base(p)}><path d="m9 6 6 6-6 6" /></svg>,
   Close: (p: IconProps) => <svg {...base(p)}><path d="M6 6l12 12M18 6 6 18" /></svg>,
   Plus: (p: IconProps) => <svg {...base(p)}><path d="M12 5v14M5 12h14" /></svg>,
@@ -54,7 +55,7 @@ export function familyIcon(family: string, artifactType?: string) {
     case "requirements": return Icon.Requirement;
     case "agent-definitions": return Icon.Agent;
     case "override-rules": return Icon.Rule;
-    case "test-suites": return Icon.Suite;
+    case "test-suites": case "document-suites": return Icon.Suite;
     case "test-cases": return Icon.Case;
     case "reports": return Icon.Report;
     default: return artifactType === "test-result" ? Icon.Report : Icon.Artifact;

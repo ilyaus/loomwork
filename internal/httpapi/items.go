@@ -17,6 +17,7 @@ const (
 	familyAgentDefinitions = "agent-definitions"
 	familyOverrideRules    = "override-rules"
 	familyTestSuites       = "test-suites"
+	familyDocumentSuites   = "document-suites"
 	familyTestCases        = "test-cases"
 	familyReports          = "reports"
 	familyArtifacts        = "artifacts"
@@ -101,7 +102,7 @@ func (s *Server) listProjectItems(w http.ResponseWriter, _ *http.Request, projec
 	}
 	for _, requirement := range requirements {
 		groups[0].Items = append(groups[0].Items, TreeItem{
-			Ref: requirement.ID, Name: requirement.ID, Family: familyRequirements,
+			Ref: requirement.ID, Name: requirement.ReferenceID(), Family: familyRequirements,
 			ArtifactType: "requirement", MediaType: "application/json", Version: requirement.Version,
 			Status: string(requirement.Status),
 		})
@@ -149,7 +150,19 @@ func (s *Server) listProjectItems(w http.ResponseWriter, _ *http.Request, projec
 			ArtifactType: "test-report", MediaType: report.MediaType,
 		})
 	}
+	grouped := map[string]bool{}
+	for _, suite := range project.DocumentSuites() {
+		children := make([]TreeItem, 0, len(suite.Documents))
+		for _, artifact := range suite.Documents {
+			grouped[artifact.ID] = true
+			children = append(children, TreeItem{Ref: artifact.ID, Name: strings.TrimPrefix(artifact.Name, suite.Root+"/"), Family: familyArtifacts, ArtifactType: string(artifact.Type), MediaType: artifactMediaType(artifact), Version: artifact.Version})
+		}
+		groups[3].Items = append(groups[3].Items, TreeItem{Ref: suite.ID, Name: suite.Name, Family: familyDocumentSuites, ArtifactType: "document-suite", MediaType: "application/json", Children: children})
+	}
 	for _, artifact := range project.LatestArtifacts() {
+		if grouped[artifact.ID] {
+			continue
+		}
 		groups[5].Items = append(groups[5].Items, TreeItem{
 			Ref: artifact.ID, Name: artifact.Name, Family: familyArtifacts,
 			ArtifactType: string(artifact.Type), MediaType: artifactMediaType(artifact),
@@ -173,7 +186,7 @@ func (s *Server) getProjectItem(w http.ResponseWriter, r *http.Request, projectR
 			writeStoreError(w, err)
 			return
 		}
-		document, err = jsonDocument(ref, ref, family, "requirement", "application/json", requirement.Version, requirement, nil)
+		document, err = jsonDocument(requirement.ID, requirement.ReferenceID(), family, "requirement", "application/json", requirement.Version, requirement, nil)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -192,6 +205,32 @@ func (s *Server) getProjectItem(w http.ResponseWriter, r *http.Request, projectR
 			return
 		}
 		document, err = jsonDocument(ref, rule.Title, family, "override-rule", "application/json", rule.Version, rule, nil)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	case familyDocumentSuites:
+		project, loadErr := s.store.Resolve(projectRef)
+		if loadErr != nil {
+			writeStoreError(w, loadErr)
+			return
+		}
+		var found *model.DocumentSuite
+		for _, suite := range project.DocumentSuites() {
+			if suite.ID == ref {
+				found = &suite
+				break
+			}
+		}
+		if found == nil {
+			writeStoreError(w, fmt.Errorf("document suite %q: %w", ref, store.ErrNotFound))
+			return
+		}
+		if version != 0 {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("document suites group current document versions; select a document to view its history"))
+			return
+		}
+		document, err = jsonDocument(ref, found.Name, family, "document-suite", "application/json", 0, found, nil)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -245,6 +284,20 @@ func (s *Server) getProjectItem(w http.ResponseWriter, r *http.Request, projectR
 		if !ok {
 			writeStoreError(w, fmt.Errorf("artifact %q in project %s: %w", ref, project.Name, store.ErrNotFound))
 			return
+		}
+		if version > 0 {
+			found := false
+			for _, revision := range project.ArtifactHistory(artifact.Name) {
+				if revision.Version == version {
+					artifact = revision
+					found = true
+					break
+				}
+			}
+			if !found {
+				writeStoreError(w, fmt.Errorf("artifact %q v%d: %w", ref, version, store.ErrNotFound))
+				return
+			}
 		}
 		content, contentErr := orchestrator.ArtifactContent(artifact)
 		if contentErr != nil {

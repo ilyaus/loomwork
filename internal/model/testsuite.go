@@ -84,9 +84,8 @@ func ParseTestScenario(raw string) (TestScenario, error) {
 }
 
 var (
-	suiteIDPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	testCaseIDPattern    = regexp.MustCompile(`^tc-[0-9]{3,}$`)
-	requirementIDPattern = regexp.MustCompile(`^req-[0-9]{3,}$`)
+	suiteIDPattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	testCaseIDPattern = regexp.MustCompile(`^tc-[0-9]{3,}$`)
 )
 
 // TestRequest is the request definition handed to an external executor.
@@ -169,12 +168,12 @@ func (c *TestCase) normalize(position int) error {
 	requirements := make([]string, 0, len(c.RequirementIDs))
 	seen := map[string]bool{}
 	for _, id := range c.RequirementIDs {
-		normalized := strings.TrimSpace(strings.ToLower(id))
-		if normalized == "" {
+		if strings.TrimSpace(id) == "" {
 			continue
 		}
-		if !requirementIDPattern.MatchString(normalized) {
-			return fmt.Errorf("test case %q requirement link %q must look like req-001", c.Name, id)
+		normalized, err := NormalizeRequirementID(id)
+		if err != nil {
+			return fmt.Errorf("test case %q: %w", c.Name, err)
 		}
 		if !seen[normalized] {
 			seen[normalized] = true
@@ -349,13 +348,22 @@ func (s *TestSuite) Normalize() error {
 	sort.Strings(rules)
 	s.OverrideRules = rules
 
-	for id, version := range s.RequirementVersions {
-		if !requirementIDPattern.MatchString(id) {
-			return fmt.Errorf("test suite requirement_versions key %q must look like req-001", id)
+	if s.RequirementVersions != nil {
+		versions := make(map[string]int, len(s.RequirementVersions))
+		for id, version := range s.RequirementVersions {
+			normalized, err := NormalizeRequirementID(id)
+			if err != nil {
+				return err
+			}
+			if version < 1 {
+				return fmt.Errorf("test suite requirement_versions[%s] must be 1 or greater", id)
+			}
+			if previous, ok := versions[normalized]; ok && previous != version {
+				return fmt.Errorf("conflicting requirement versions for %s", normalized)
+			}
+			versions[normalized] = version
 		}
-		if version < 1 {
-			return fmt.Errorf("test suite requirement_versions[%s] must be 1 or greater", id)
-		}
+		s.RequirementVersions = versions
 	}
 
 	used := map[string]bool{}

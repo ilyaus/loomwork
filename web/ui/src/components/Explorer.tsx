@@ -1,11 +1,11 @@
 import {useMemo, useState} from "react";
 import {Icon, familyIcon} from "./Icons";
-import {baseName, dirName} from "../lib/format";
-import {familyKey, itemKey, useDesktop} from "../lib/desktop";
+import FileTree from "./FileTree";
+import {familyActions, familyKey, itemKey, useDesktop} from "../lib/desktop";
 import type {TreeGroup, TreeItem} from "../types";
 
-// Families whose group label opens a list view instead of only toggling.
-const listFamilies = new Set(["requirements", "test-suites"]);
+// Families whose group label also opens a list view when toggling.
+const listFamilies = new Set(Object.keys(familyActions));
 
 export default function Explorer({groups, activeKey}: {groups: TreeGroup[]; activeKey: string}) {
   const desktop = useDesktop();
@@ -81,20 +81,27 @@ function Group({group, open, onToggle, activeKey}: {group: TreeGroup; open: bool
         <button
           type="button"
           className="tree-group-label"
-          onClick={isList ? () => desktop.openFamily(group.family) : onToggle}
+          onClick={() => {
+            onToggle();
+            if (isList) desktop.openFamily(group.family);
+          }}
+          aria-expanded={open}
           title={isList ? `Open ${group.label.toLowerCase()} list` : undefined}
         >
           <GroupIcon size={14} className={`fam fam-${group.family}`} />
           <span className="tree-name">{group.label}</span>
           <span className="count">{group.items.length}</span>
         </button>
+        {familyActions[group.family] && !(group.family === "requirements" && desktop.requirementsReadOnly) && <button type="button" className="icon-btn tiny" onClick={() => desktop.openDialog(familyActions[group.family].kind)} aria-label={familyActions[group.family].label} title={familyActions[group.family].label}><Icon.Plus size={13} /></button>}
       </div>
       {open && (
         <div className="tree-children">
-          {group.family === "reports" ? <ReportNodes items={group.items} activeKey={activeKey} /> : group.items.map((item) => (
+          {["reports", "artifacts"].includes(group.family) ? <FileNodes items={group.items} activeKey={activeKey} /> : group.items.map((item) => (
             <div key={itemKey(item.family, item.ref)}>
-              <TreeNode item={item} activeKey={activeKey} />
-              {item.children?.map((child) => <TreeNode item={child} activeKey={activeKey} nested key={itemKey(child.family, child.ref)} />)}
+              {item.artifactType === "document-suite" ? <DocumentSuiteNode item={item} activeKey={activeKey} /> : <>
+                <TreeNode item={item} activeKey={activeKey} />
+                {item.children?.map((child) => <TreeNode item={child} activeKey={activeKey} nested key={itemKey(child.family, child.ref)} />)}
+              </>}
             </div>
           ))}
           {group.items.length === 0 && <div className="tree-empty">None yet</div>}
@@ -104,29 +111,24 @@ function Group({group, open, onToggle, activeKey}: {group: TreeGroup; open: bool
   );
 }
 
-// ReportNodes groups report files by their folder (suite/version) so long
-// timestamped names stay readable.
-function ReportNodes({items, activeKey}: {items: TreeItem[]; activeKey: string}) {
-  const folders = new Map<string, TreeItem[]>();
-  for (const item of items) {
-    const folder = dirName(item.name);
-    folders.set(folder, [...(folders.get(folder) || []), item]);
-  }
-  return (
-    <>
-      {[...folders.entries()].map(([folder, files]) => (
-        <div key={folder || "."}>
-          {folder && <div className="tree-folder" title={folder}>{folder}</div>}
-          {files.map((item) => (
-            <TreeNode item={{...item, name: baseName(item.name)}} activeKey={activeKey} nested={Boolean(folder)} key={itemKey(item.family, item.ref)} />
-          ))}
-        </div>
-      ))}
-    </>
-  );
+// FileNodes groups files by their folder so long paths and timestamped names
+// stay readable.
+function FileNodes({items, activeKey}: {items: TreeItem[]; activeKey: string}) {
+  return items.length > 0 ? <FileTree items={items} family={items[0].family} activeKey={activeKey} compact /> : null;
 }
 
-function TreeNode({item, activeKey, nested = false}: {item: TreeItem; activeKey: string; nested?: boolean}) {
+function DocumentSuiteNode({item, activeKey}: {item: TreeItem; activeKey: string}) {
+  const [open, setOpen] = useState(false);
+  return <div>
+    <div className="tree-suite-head">
+      <button type="button" className="tree-toggle" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${item.name}`} onClick={() => setOpen(value => !value)}><Icon.Chevron size={12} className={open ? "rot90" : ""} /></button>
+      <TreeNode item={item} activeKey={activeKey} ariaExpanded={open} onSelect={() => setOpen(value => !value)} />
+    </div>
+    {open && <FileTree items={item.children || []} family={`document-suites:${item.ref}`} activeKey={activeKey} compact />}
+  </div>;
+}
+
+function TreeNode({item, activeKey, nested = false, ariaExpanded, onSelect}: {item: TreeItem; activeKey: string; nested?: boolean; ariaExpanded?: boolean; onSelect?: () => void}) {
   const desktop = useDesktop();
   const key = itemKey(item.family, item.ref);
   const NodeIcon = familyIcon(item.family, item.artifactType);
@@ -134,7 +136,11 @@ function TreeNode({item, activeKey, nested = false}: {item: TreeItem; activeKey:
     <button
       type="button"
       className={`tree-row tree-node ${nested ? "nested" : ""} ${activeKey === key ? "selected" : ""}`}
-      onClick={() => desktop.openItem(item)}
+      onClick={() => {
+        desktop.openItem(item);
+        onSelect?.();
+      }}
+      aria-expanded={ariaExpanded}
       title={item.name}
     >
       <NodeIcon size={14} className={`fam fam-${item.family} type-${item.artifactType}`} />

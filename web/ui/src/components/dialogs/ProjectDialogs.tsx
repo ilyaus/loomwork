@@ -12,10 +12,11 @@ export default function ProjectDialogs({state, onClose, project}: {state: Dialog
   return (
     <>
       <RequirementDialog open={state?.kind === "requirement"} onClose={onClose} />
-      <ArtifactDialog open={state?.kind === "artifact"} onClose={onClose} />
+      {state?.kind === "artifact" && <ArtifactDialog onClose={onClose} existing={project.artifacts.find(artifact => artifact.id === state.payload)} />}
+      {state?.kind === "report" && <ArtifactDialog report onClose={onClose} />}
       <SuiteDialog open={state?.kind === "suite"} onClose={onClose} />
-      <AgentDialog open={state?.kind === "agent"} onClose={onClose} existing={state?.kind === "agent" ? state.payload as AgentDefinition | undefined : undefined} />
-      <RuleDialog open={state?.kind === "rule"} onClose={onClose} existing={state?.kind === "rule" ? state.payload as OverrideRule | undefined : undefined} />
+      {state?.kind === "agent" && <AgentDialog open onClose={onClose} existing={state.payload as AgentDefinition | undefined} />}
+      {state?.kind === "rule" && <RuleDialog open onClose={onClose} existing={state.payload as OverrideRule | undefined} />}
       <SourceDialog open={state?.kind === "source"} onClose={onClose} sources={project.sources || []} />
     </>
   );

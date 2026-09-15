@@ -23,8 +23,9 @@ export default function Overview({project, groups}: {project: Project; groups: T
       const current = newest.get(artifact.name);
       if (!current || artifact.version > current.version) newest.set(artifact.name, artifact);
     }
-    return [...newest.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
-  }, [project.artifacts]);
+    const visible = new Set(byFamily.get("artifacts")?.map(item => item.ref));
+    return [...newest.values()].filter(artifact => visible.has(artifact.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
+  }, [project.artifacts, byFamily]);
 
   return (
     <div className="overview">
@@ -39,14 +40,22 @@ export default function Overview({project, groups}: {project: Project; groups: T
           </div>
         </div>
         <div className="quick-actions">
-          <button type="button" className="btn primary" onClick={() => desktop.openDialog("requirement")}><Icon.Plus size={14} /> Requirement</button>
+          {!desktop.requirementsReadOnly && <button type="button" className="btn primary" onClick={() => desktop.openDialog("requirement")}><Icon.Plus size={14} /> Requirement</button>}
           <button type="button" className="btn" onClick={() => desktop.openDialog("artifact")}><Icon.Artifact size={14} /> Add artifact</button>
           <button type="button" className="btn" onClick={() => desktop.openDialog("suite")}><Icon.Upload size={14} /> Import suite</button>
+          <button type="button" className="btn" onClick={() => desktop.openDialog("report")}><Icon.Report size={14} /> Add report</button>
           <button type="button" className="btn" onClick={() => desktop.openDialog("agent")}><Icon.Agent size={14} /> Agent definition</button>
           <button type="button" className="btn" onClick={() => desktop.openDialog("rule")}><Icon.Rule size={14} /> Override rule</button>
         </div>
       </header>
 
+      {project.import && <div className="import-notice">
+        <Badge tone="info">{project.import.format} snapshot</Badge>
+        <span>Imported {formatDate(project.import.importedAt)} · {project.import.features.length} features</span>
+        <code>{project.import.sourcePath}</code>
+        <span>Requirements are read-only. QA folders are grouped under Test Suites; folder settings and test edits affect only this local copy.</span>
+        <button type="button" className="btn small" onClick={() => desktop.openFamily("artifacts")}>Browse imported documents</button>
+      </div>}
       {testability.error && <ErrorPanel error={testability.error} />}
 
       <section className="stat-grid">
@@ -61,14 +70,14 @@ export default function Overview({project, groups}: {project: Project; groups: T
           <span className="stat-sub">
             {health?.available && health.coveragePercent !== null
               ? `${health.coveredRequirements.length} covered · ${health.uncoveredRequirements.length} gaps`
-              : "no test suites yet"}
+              : "no native test coverage yet"}
           </span>
         </div>
         <button type="button" className="stat" onClick={() => desktop.openFamily("test-suites")}>
           <span className="stat-label"><Icon.Suite size={14} /> Test suites</span>
-          <span className="stat-value">{health?.suites ?? byFamily.get("test-suites")?.length ?? 0}</span>
+          <span className="stat-value">{byFamily.get("test-suites")?.length ?? health?.suites ?? 0}</span>
           <span className="stat-sub">
-            {plural(health?.cases ?? 0, "case")}
+            {plural(health?.cases ?? 0, "native case")} · {plural(byFamily.get("test-suites")?.filter(item => item.artifactType === "document-suite").length ?? 0, "document suite")}
             {health?.incompleteSuites ? ` · ${health.incompleteSuites} incomplete` : ""}
             {health?.unlinkedCases ? ` · ${health.unlinkedCases} unlinked` : ""}
           </span>
@@ -95,7 +104,7 @@ export default function Overview({project, groups}: {project: Project; groups: T
               {health.uncoveredRequirements.map((id) => (
                 <li key={id}>
                   <button type="button" className="link-row" onClick={() => desktop.openItem({family: "requirements", ref: id, name: id})}>
-                    <code>{id}</code>
+                    <code>{desktop.requirementName(id)}</code>
                     <span className="row-text">{requirementText.get(id)?.text || ""}</span>
                   </button>
                 </li>
@@ -109,7 +118,7 @@ export default function Overview({project, groups}: {project: Project; groups: T
           {health && health.coveredRequirements.length > 0 && (
             <details className="covered">
               <summary>{plural(health.coveredRequirements.length, "covered requirement")}</summary>
-              <Chips items={health.coveredRequirements} tone="ok" onClick={(id) => desktop.openItem({family: "requirements", ref: id, name: id})} />
+              <Chips items={health.coveredRequirements.map(desktop.requirementName)} tone="ok" onClick={(id) => desktop.openItem({family: "requirements", ref: id, name: id})} />
             </details>
           )}
         </section>

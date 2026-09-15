@@ -65,6 +65,32 @@ func (s *Server) addArtifact(w http.ResponseWriter, r *http.Request, projectRef 
 	writeJSON(w, http.StatusCreated, artifact)
 }
 
+func (s *Server) listReports(w http.ResponseWriter, _ *http.Request, projectRef string) {
+	reports, err := s.store.ListReports(projectRef)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reports)
+}
+
+func (s *Server) addReport(w http.ResponseWriter, r *http.Request, projectRef string) {
+	var request struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	}
+	if err := decodeBody(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	report, err := s.store.AddReport(projectRef, request.Name, []byte(request.Content))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, report)
+}
+
 func (s *Server) listTestSuites(w http.ResponseWriter, _ *http.Request, projectRef string) {
 	suites, err := s.store.ListTestSuites(projectRef)
 	if err != nil {

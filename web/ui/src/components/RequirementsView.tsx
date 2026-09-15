@@ -1,11 +1,12 @@
-import {FormEvent, useMemo, useState} from "react";
+import {FormEvent, useEffect, useMemo, useState} from "react";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {api} from "../api";
 import {Icon} from "./Icons";
 import {Badge, Chips, EmptyState, ErrorPanel, Field, SafeLink, Spinner, StatusBadge} from "./ui";
 import {formatDate, plural, splitTags, timeAgo} from "../lib/format";
 import {useDesktop} from "../lib/desktop";
-import type {Requirement, RequirementWrite, SourceType} from "../types";
+import type {Requirement, RequirementTestLink, RequirementWrite, SourceType} from "../types";
+import RequirementTests, {testLinkKey, useRequirementTests} from "./RequirementTests";
 
 type EditMode = "amend" | "new-version";
 type StatusFilter = "all" | "active" | "obsolete";
@@ -21,9 +22,19 @@ export default function RequirementsView() {
   const desktop = useDesktop();
   const {projectRef} = desktop;
   const requirements = useQuery({queryKey: ["requirements", projectRef], queryFn: () => api.listRequirements(projectRef)});
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [tag, setTag] = useState("");
+  const testLinks = useRequirementTests();
+  const filterKey = `loomwork.requirementFilters.${projectRef}`;
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(filterKey) || "{}");
+      return {search: typeof saved.search === "string" ? saved.search : "", status: (["all", "active", "obsolete"].includes(saved.status) ? saved.status : "all") as StatusFilter, tag: typeof saved.tag === "string" ? saved.tag : ""};
+    } catch { return {search: "", status: "all" as StatusFilter, tag: ""}; }
+  });
+  const {search, status, tag} = filters;
+  const setSearch = (search: string) => setFilters(current => ({...current, search}));
+  const setStatus = (status: StatusFilter) => setFilters(current => ({...current, status}));
+  const setTag = (tag: string) => setFilters(current => ({...current, tag}));
+  useEffect(() => { sessionStorage.setItem(filterKey, JSON.stringify(filters)); }, [filterKey, filters]);
   const [editing, setEditing] = useState<{id: string; mode: EditMode} | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
 
@@ -36,7 +47,7 @@ export default function RequirementsView() {
     return (requirements.data || []).filter((requirement) =>
       (status === "all" || requirement.status === status)
       && (!tag || requirement.tags?.includes(tag))
-      && (!needle || `${requirement.id} ${requirement.text} ${requirement.source_ref || ""}`.toLowerCase().includes(needle)));
+      && (!needle || `${requirement.id} ${requirement.display_id || ""} ${requirement.text} ${requirement.source_ref || ""}`.toLowerCase().includes(needle)));
   }, [requirements.data, search, status, tag]);
 
   if (requirements.isLoading) return <div className="page-pad"><Spinner label="Loading requirements…" /></div>;
@@ -49,9 +60,9 @@ export default function RequirementsView() {
       <header className="list-head">
         <div>
           <h1>Requirements</h1>
-          <p className="muted">{active} active · {total - active} obsolete. Each edit is either an in-place amend or a new retained version.</p>
+          <p className="muted">{active} active · {total - active} obsolete. {desktop.requirementsReadOnly ? "Imported requirements are read-only. Filter by feature tag or search the original requirement ID." : "Each edit is either an in-place amend or a new retained version."}</p>
         </div>
-        <button type="button" className="btn primary" onClick={() => desktop.openDialog("requirement")}><Icon.Plus size={14} /> New requirement</button>
+        {!desktop.requirementsReadOnly && <button type="button" className="btn primary" onClick={() => desktop.openDialog("requirement")}><Icon.Plus size={14} /> New requirement</button>}
       </header>
       <div className="filters">
         <label className="search">
@@ -75,15 +86,18 @@ export default function RequirementsView() {
       {total === 0 && (
         <EmptyState title="No requirements yet" icon={<Icon.Requirement size={26} />}>
           <p>Write requirements in tester-friendly language and cite the source document each one came from.</p>
-          <button type="button" className="btn primary" onClick={() => desktop.openDialog("requirement")}><Icon.Plus size={14} /> Create the first requirement</button>
+          {!desktop.requirementsReadOnly && <button type="button" className="btn primary" onClick={() => desktop.openDialog("requirement")}><Icon.Plus size={14} /> Create the first requirement</button>}
         </EmptyState>
       )}
       {total > 0 && visible.length === 0 && <EmptyState title="No requirements match these filters" />}
 
+      {testLinks.error && <ErrorPanel error={testLinks.error} />}
       <div className="req-list">
         {visible.map((requirement) => (
           <RequirementRow
             requirement={requirement}
+            tests={testLinks.data?.[requirement.id]}
+            testsLoading={testLinks.isPending}
             editing={editing?.id === requirement.id ? editing.mode : null}
             showHistory={historyId === requirement.id}
             onEdit={(mode) => { setHistoryId(null); setEditing(mode ? {id: requirement.id, mode} : null); }}
@@ -96,8 +110,10 @@ export default function RequirementsView() {
   );
 }
 
-function RequirementRow({requirement, editing, showHistory, onEdit, onToggleHistory}: {
+function RequirementRow({requirement, tests, testsLoading, editing, showHistory, onEdit, onToggleHistory}: {
   requirement: Requirement;
+  tests?: RequirementTestLink[];
+  testsLoading: boolean;
   editing: EditMode | null;
   showHistory: boolean;
   onEdit: (mode: EditMode | null) => void;
@@ -117,8 +133,8 @@ function RequirementRow({requirement, editing, showHistory, onEdit, onToggleHist
     <article className={`req-row ${editing || showHistory ? "expanded" : ""} ${isActive ? "" : "inactive"}`}>
       <div className="req-main">
         <div className="req-id-col">
-          <button type="button" className="req-id" onClick={() => desktop.openItem({family: "requirements", ref: requirement.id, name: requirement.id})} title="Open in a tab">
-            {requirement.id}
+          <button type="button" className="req-id" onClick={() => desktop.openItem({family: "requirements", ref: requirement.id, name: requirement.display_id || requirement.id})} title="Open requirement and tests">
+            {requirement.display_id || requirement.id}
           </button>
           <small className="mono muted">v{requirement.version}</small>
         </div>
@@ -126,6 +142,8 @@ function RequirementRow({requirement, editing, showHistory, onEdit, onToggleHist
           <p className="req-text">{requirement.text}</p>
           <div className="req-meta">
             <StatusBadge status={requirement.status} />
+            {requirement.metadata?.source_id && <Badge tone="info">{requirement.metadata.source_id}</Badge>}
+            {requirement.metadata?.source_path && <button type="button" className="btn small" onClick={() => desktop.openItem({family: "artifacts", ref: requirement.metadata!.source_path, name: requirement.metadata!.source_path})}>Source snapshot</button>}
             {requirement.origin === "extracted" && <Badge tone="info" title="Extracted by document analysis">extracted</Badge>}
             {requirement.source_type && (
               <span className="req-source">
@@ -137,21 +155,19 @@ function RequirementRow({requirement, editing, showHistory, onEdit, onToggleHist
             <span className="muted small" title={formatDate(requirement.created_at)}>{timeAgo(requirement.created_at)}</span>
           </div>
         </div>
-        <div className="req-actions">
-          <button type="button" className="btn small" onClick={() => onEdit(editing === "amend" ? null : "amend")} disabled={status.isPending} title="Rewrite this version in place">Edit</button>
-          <button type="button" className="btn small" onClick={() => onEdit(editing === "new-version" ? null : "new-version")} disabled={status.isPending} title="Write the next version and retain this one">New version</button>
-          <button type="button" className={`btn small ${showHistory ? "on" : ""}`} onClick={onToggleHistory} disabled={status.isPending}><Icon.History size={13} /> History</button>
-          <label className={`switch ${isActive ? "on" : ""}`} title={isActive ? "Active. Switch off to mark obsolete." : "Obsolete. Switch on to reactivate."}>
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(event) => status.mutate(event.currentTarget.checked ? "active" : "obsolete")}
-              disabled={status.isPending || Boolean(editing)}
-              aria-label={`${requirement.id} status: ${requirement.status}`}
-            />
-            <span className="switch-track" aria-hidden="true" />
-            <span className="switch-label">{isActive ? "Active" : "Obsolete"}</span>
-          </label>
+        <div className="req-side">
+          <RequirementTests links={tests} loading={testsLoading} compact onSelect={link => desktop.openItem({family: "requirements", ref: requirement.id, name: requirement.display_id || requirement.id}, testLinkKey(link))} />
+          <div className="req-actions">
+            {desktop.requirementsReadOnly ? <Badge>read-only</Badge> : <>
+              <button type="button" className="btn small" onClick={() => onEdit(editing === "amend" ? null : "amend")} disabled={status.isPending} title="Rewrite this version in place">Edit</button>
+              <button type="button" className="btn small" onClick={() => onEdit(editing === "new-version" ? null : "new-version")} disabled={status.isPending} title="Write the next version and retain this one">New version</button>
+              <label className={`switch ${isActive ? "on" : ""}`} title={isActive ? "Active. Switch off to mark obsolete." : "Obsolete. Switch on to reactivate."}>
+                <input type="checkbox" checked={isActive} onChange={event => status.mutate(event.currentTarget.checked ? "active" : "obsolete")} disabled={status.isPending || Boolean(editing)} aria-label={`${requirement.id} status: ${requirement.status}`} />
+                <span className="switch-track" aria-hidden="true" /><span className="switch-label">{isActive ? "Active" : "Obsolete"}</span>
+              </label>
+            </>}
+            <button type="button" className={`btn small ${showHistory ? "on" : ""}`} onClick={onToggleHistory} disabled={status.isPending}><Icon.History size={13} /> History</button>
+          </div>
         </div>
       </div>
       {status.error && <ErrorPanel error={status.error} />}

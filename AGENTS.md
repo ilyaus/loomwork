@@ -40,3 +40,33 @@ Seed fixtures with the CLI (`project create`, `requirement create`, `artifact ad
   variables for both themes; keep class names unique across sections (a `.count` collision once
   broke the tree pills).
 - The Markdown renderer builds React elements directly; never add `dangerouslySetInnerHTML`.
+
+## Import and browser regression checks
+- After `make build`, run `npm --prefix web/ui run test:ui`. It starts its own server on an ephemeral
+  port and creates a temporary workspace and spec-kit fixture. Requires Node 22.12+ and Chrome at
+  `/usr/bin/google-chrome`, or set `CHROME_BIN`.
+- `project import --path /absolute/source --format spec-kit --preview --json` inspects without
+  importing. Omit `--preview` to create a snapshot; `--features id1,id2` selects feature folders.
+  Always pass a temporary `--home` when testing.
+- `internal/projectimport` holds format adapters behind `Adapter`; `DirStore.CreateWithRequirements`
+  stages and publishes snapshots. `Project.Import.RequirementsReadOnly` blocks all requirement writes
+  in the shared store, while local artifacts, test suites, agents, rules, and reports remain writable.
+- New spec-kit imports use IDs such as `008-FR-001`, preserving the spec prefix and original FR/NFR/SC
+  number regardless of import order or selected features. Old imports retain their storage IDs and
+  history; `display_id` exposes the canonical reference, which is also accepted by requirement reads.
+  `source_id`, `source_path`, `source_line`, and `feature` metadata retain provenance.
+- Reports can be uploaded through `POST /api/projects/{ref}/reports` or the UI. Names are relative
+  paths, uploads are append-only, and JSON files must parse. Artifact history is available through
+  the common item-history endpoint; an artifact ID still identifies its original revision by default.
+- `GET /api/projects/{ref}/requirement-tests` derives links through `internal/traceability` from current
+  suite cases and latest scenario artifacts. Markdown links require explicit fields or spec-kit FR
+  filenames/frontmatter, scoped by feature; they never change native coverage. Local Markdown tests
+  can use the `test-scenario` tag and a `Requirements: req-001` field.
+- `FileTree` is shared by Explorer and file-family lists. Folder state is kept per project, family,
+  and view in sessionStorage; search uses flat results without changing collapsed folders.
+- Requirement pages render the selected test beneath the requirement text; row test links open that
+  combined view. Back to requirements restores the list filters saved in sessionStorage.
+- `Project.testDocuments.roots` configures document-suite folder prefixes through
+  `GET|PUT /api/projects/{ref}/test-document-settings`. Spec-kit defaults to each feature's `sdd-qa`.
+  The tree groups those documents under Test Suites with family `document-suites`, while retaining
+  artifact IDs/history and the artifact read API. No files move and native suite coverage is unchanged.

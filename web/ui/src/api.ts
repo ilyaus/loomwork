@@ -10,11 +10,15 @@ import type {
   OverrideRule,
   OverrideRuleWrite,
   Project,
+  ProjectImportRequest,
+  ProjectImportPreview,
   ProjectSummary,
   ProviderModels,
   Requirement,
+  RequirementTestLink,
   RequirementWrite,
   TestabilityReport,
+  TestDocumentSettings,
   TreeResponse,
   ViewerDocument,
   Workspace,
@@ -55,12 +59,15 @@ export const api = {
   listProjects: () => request<ProjectSummary[]>("/api/projects"),
   createProject: (body: {name: string; description: string; tags: string[]}) =>
     request<Project>("/api/projects", json("POST", body)),
+  previewProjectImport: (body: ProjectImportRequest) => request<ProjectImportPreview>("/api/project-import/preview", json("POST", body)),
+  importProject: (body: ProjectImportRequest) => request<{project: Project; preview: ProjectImportPreview}>("/api/project-import", json("POST", body)),
   getProject: (ref: string) => request<Project>(projectPath(ref)),
   testability: (ref: string) => request<TestabilityReport>(`${projectPath(ref)}/testability`),
   addSource: (ref: string, source: DocumentSource) =>
     request<DocumentSource[]>(`${projectPath(ref)}/sources`, json("POST", source)),
 
   listRequirements: (ref: string) => request<Requirement[]>(`${projectPath(ref)}/requirements`),
+  requirementTests: (ref: string) => request<Record<string, RequirementTestLink[]>>(`${projectPath(ref)}/requirement-tests`),
   createRequirement: (ref: string, body: RequirementWrite) =>
     request<Requirement>(`${projectPath(ref)}/requirements`, json("POST", body)),
   // PATCH writes the next version; PUT amends the current one in place.
@@ -75,6 +82,10 @@ export const api = {
 
   addArtifact: (ref: string, body: {name: string; type: ArtifactType; content: string; mediaType?: string; tags: string[]; pinned: boolean}) =>
     request<Artifact>(`${projectPath(ref)}/artifacts`, json("POST", body)),
+  addReport: (ref: string, body: {name: string; content: string}) =>
+    request<{name: string}>(`${projectPath(ref)}/reports`, json("POST", body)),
+  testDocumentSettings: (ref: string) => request<TestDocumentSettings>(`${projectPath(ref)}/test-document-settings`),
+  setTestDocumentSettings: (ref: string, roots: string[]) => request<TestDocumentSettings>(`${projectPath(ref)}/test-document-settings`, json("PUT", {roots})),
   importTestSuite: (ref: string, document: unknown) =>
     request<ImportResult>(`${projectPath(ref)}/test-suites`, json("POST", document)),
 
